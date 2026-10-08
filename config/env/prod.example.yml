@@ -1,0 +1,9 @@
+# Copy to config/env/prod.yml (git-ignored) and fill in. Values here are placeholders only.
+gcp:
+  project_id: "<your-gcp-project-id>"
+  region: us-central1
+  bq_location: US
+  raw_bucket: "<project-id>-prod-raw"
+  tfstate_bucket: "<project-id>-tfstate"
+alerts:
+  email_to: "<your-alert-address>"

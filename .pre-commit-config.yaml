@@ -1,0 +1,31 @@
+# Install once: pip install pre-commit && pre-commit install   (spec step 0.5)
+repos:
+  - repo: local
+    hooks:
+      - id: secret-scan
+        name: secret scan (all git objects)
+        entry: python tools/secret_scan.py
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: no-data-files
+        name: no market data outside tests/fixtures
+        entry: data files are not allowed outside tests/fixtures
+        language: fail
+        files: \.(parquet|pbix|duckdb|csv|jsonl)$
+        exclude: ^tests/fixtures/
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: detect-private-key
+      - id: check-merge-conflict
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff

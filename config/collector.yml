@@ -1,0 +1,9 @@
+# Stream collector settings. No constant lives in Python code (spec D-rules, rule 6).
+batch_seconds: 60            # flush one parquet batch per minute (spec §5 latency budget)
+stale_alert_minutes: 3       # healthcheck: no new message for this long during a session => alert
+connect_timeout_seconds: 30  # every outbound call has a timeout (rule 32)
+schedule:
+  start_local: "08:55"       # Asia/Ho_Chi_Minh
+  stop_local: "15:05"
+  weekdays: [MON, TUE, WED, THU, FRI]
+timezone: Asia/Ho_Chi_Minh

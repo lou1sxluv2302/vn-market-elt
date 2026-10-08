@@ -1,0 +1,28 @@
+[project]
+name = "vnmarket"
+version = "0.0.0"
+description = "Intraday Vietnamese stock-market data on a cloud warehouse (ELT)."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml==6.0.2",
+]
+
+[project.optional-dependencies]
+# Sponsor-only vnstock libraries are NOT on PyPI and are never required in CI;
+# the collector isolates them behind an interface (spec §14.7).
+dev = ["ruff==0.6.9", "pre-commit==3.8.0"]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]

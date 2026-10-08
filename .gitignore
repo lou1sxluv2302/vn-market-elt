@@ -1,0 +1,69 @@
+# --- Data: market data must never be committed (vendor licences forbid redistribution) ---
+data/
+bi/
+*.parquet
+*.pbix
+*.duckdb
+*.duckdb.wal
+*.jsonl
+*.csv
+!tests/fixtures/**/*.csv
+!tests/fixtures/**/*.jsonl
+
+# --- Secrets and environment-specific values ---
+# Tool-generated secret stores (dlt, dbt), key files and machine-local notes.
+.dlt/
+**/.dlt/
+profiles.yml
+*.p12
+*.pfx
+*.jks
+id_rsa*
+id_ed25519*
+*.env
+sa.json
+*-sa.json
+key.json
+*-key.json
+*_key.json
+.vnstock/
+CLAUDE.local.md
+.env
+.env.*
+config/env/*
+!config/env/*.example.yml
+*.pem
+*.key
+*credentials*.json
+*service-account*.json
+api_key.json
+
+# --- Terraform ---
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.example.tfvars
+crash.log
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# --- dbt ---
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+logs/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
