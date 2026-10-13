@@ -13,6 +13,9 @@ All notable changes to this project are documented here. The format follows
   (GitHub Issues, default triage labels, single-context domain docs).
 - Git guardrail hook for agents (Bash and PowerShell tools), with known-answer tests;
   runs without `jq`.
+- GitHub project setup: pull request and issue templates, CODEOWNERS, labels,
+  phase milestones (#7).
+- Local setup instructions; pre-commit active (#6).
 - Repository skeleton, English specification, 20 architecture decision records,
   glossary of Vietnamese market terms, engineering rules, domain router,
   contributing guide and security policy.
@@ -36,3 +39,8 @@ All notable changes to this project are documented here. The format follows
 - `CONTEXT.md` replaces `docs/glossary.md` as the project's language (ADR-0025
   supersedes ADR-0015).
 - The ASCII hyphen is the only dash; a pre-commit hook rejects em and en dashes.
+- ruff and pre-commit bumped (supersedes Dependabot #3, #4); hook revisions refreshed.
+- The dash hook matches UTF-8 bytes (pygrep rejected `\N{...}` and crashed).
+- `tools/secret_scan.py`: one git entry point, GitHub noreply addresses allowed by
+  domain, self-test covers e-mail warnings.
+

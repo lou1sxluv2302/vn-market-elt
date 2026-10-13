@@ -29,9 +29,9 @@ they become the source of progress and this list is retired.
 - [x] Research content split into a private companion repo; README rewritten for a portfolio audience (2026-10-13)
 - [x] Security audit before first push (2026-10-13): no secrets; 2 Medium + 4 Low fixed - procedure in `docs/runbooks/security-audit.md`
 - [x] Pushed 2026-10-13: public `main`; private companion repo created (visibility verified private) and pushed; Dependabot security updates on
-- [ ] Agent workflow skills, mattpocock/skills integration (`docs/agents/`, `CONTEXT.md`), git guardrail hook - PR for issue #2
-- [ ] 0.5 Repo security - config done (`.pre-commit-config.yaml`, `tools/secret_scan.py`, Dependabot, `.gitattributes`); left: `pre-commit install` (GitHub secret scanning and push protection verified on)
-- [ ] 0.6 GitHub ruleset, labels, milestones, templates
+- [x] Agent workflow skills, mattpocock/skills integration (`docs/agents/`, `CONTEXT.md`), git guardrail hook - PR #5, merged 2026-10-13
+- [x] 0.5 Repo security - pre-commit installed and green on the whole repo (secret scan, gitleaks, private keys, large files, data files, dashes, ruff); Dependabot; GitHub secret scanning and push protection on (#6)
+- [x] 0.6 Rulesets `protect-main` and `protect-release-tags`, squash-only, auto-delete branches, labels, phase milestones, PR/issue templates, CODEOWNERS (#7); status checks join the ruleset in 0.8
 - [ ] 0.7 Terraform (agent writes, owner applies)
 - [ ] 0.8 Minimal CI
 
