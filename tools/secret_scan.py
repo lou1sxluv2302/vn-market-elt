@@ -29,7 +29,9 @@ SECRET_PATTERNS = {
     "gcp_api_key": r"\bAIza[0-9A-Za-z_\-]{35}\b",
     "gcp_service_account_key": r"\"private_key\"\s*:\s*\"-----BEGIN",
     "private_key_block": r"-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----",
-    "github_token": r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b|\bgithub_pat_[A-Za-z0-9_]{50,}\b",
+    "github_token": (
+        r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b|\bgithub_pat_[A-Za-z0-9_]{50,}\b"
+    ),
     "slack_token": r"\bxox[abpors]-[A-Za-z0-9-]{10,}\b",
     "stripe_key": r"\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b",
     "stripe_webhook_secret": r"\bwhsec_[A-Za-z0-9]{16,}\b",
@@ -50,8 +52,13 @@ WARNING_PATTERNS = {
 SELF_PATH = "tools/secret_scan.py"
 ALLOWED_EMAILS = {
     "noreply@anthropic.com",
-    "174849326+lou1sxluv2302@users.noreply.github.com",
+    "noreply@github.com",  # committer of merges made on github.com
 }
+NOREPLY_SUFFIX = "@users.noreply.github.com"  # GitHub noreply addresses (people and bots)
+
+
+def is_allowed_email(address: str) -> bool:
+    return address in ALLOWED_EMAILS or address.endswith(NOREPLY_SUFFIX)
 
 
 def redact(value: str) -> str:
@@ -67,16 +74,22 @@ def entropy(text: str) -> float:
 
 
 def git(repo: Path, *args: str) -> str:
-    result = subprocess.run(
-        ["git", "-C", str(repo), *args],
+    """Run git in `repo` with a timeout; the only process this module starts."""
+    result = subprocess.run(  # noqa: S603 - fixed argv, no shell; repo paths come from our own CLI
+        ["git", "-C", str(repo), *args],  # noqa: S607 - git is resolved from PATH by design
         capture_output=True, check=True, timeout=GIT_TIMEOUT_SECONDS,
     )
     return result.stdout.decode("utf-8", "replace")
 
 
+def line_of(text: str, pos: int) -> int:
+    return text.count("\n", 0, pos) + 1
+
+
 def scan(repo: Path) -> tuple[list[str], list[str]]:
     """Return (secret findings, warnings), each a list of redacted lines."""
-    objects = [line.split() for line in git(repo, "cat-file", "--batch-all-objects", "--batch-check").splitlines() if line]
+    listing = git(repo, "cat-file", "--batch-all-objects", "--batch-check")
+    objects = [line.split() for line in listing.splitlines() if line]
     blobs = [o[0] for o in objects if o[1] == "blob"]
     commits = [o[0] for o in objects if o[1] == "commit"]
 
@@ -90,29 +103,30 @@ def scan(repo: Path) -> tuple[list[str], list[str]]:
     warnings: list[str] = []
     for commit in commits:
         for email in git(repo, "show", "-s", "--format=%ae%n%ce", commit).split():
-            if email not in ALLOWED_EMAILS:
+            if not is_allowed_email(email):
                 warnings.append(f"[commit_email] {commit[:7]} -> {redact(email)}")
 
     for blob in blobs:
         text = git(repo, "cat-file", "-p", blob)
         where = ", ".join(sorted(paths.get(blob, {"<no tree>"})))
 
-        def line_of(pos: int) -> int:
-            return text.count("\n", 0, pos) + 1
+        def finding(kind: str, pos: int, value: str,
+                    _text: str = text, _where: str = where, _blob: str = blob) -> str:
+            return f"[{kind}] {_blob[:7]} {_where}:L{line_of(_text, pos)} -> {redact(value)}"
 
         for name, pattern in SECRET_PATTERNS.items():
             for m in re.finditer(pattern, text):
-                secrets.append(f"[{name}] {blob[:7]} {where}:L{line_of(m.start())} -> {redact(m.group(0))}")
+                secrets.append(finding(name, m.start(), m.group(0)))
         for m in ASSIGNMENT.finditer(text):
             if not PLACEHOLDER.search(m.group(0)) and entropy(m.group(1)) >= 3.5:
-                secrets.append(f"[assignment] {blob[:7]} {where}:L{line_of(m.start())} -> {redact(m.group(1))}")
+                secrets.append(finding("assignment", m.start(), m.group(1)))
         if where == SELF_PATH:  # this file's own patterns would match themselves
             continue
         for name, pattern in WARNING_PATTERNS.items():
             for m in re.finditer(pattern, text):
-                if name == "email" and m.group(0) in ALLOWED_EMAILS:
+                if name == "email" and is_allowed_email(m.group(0)):
                     continue
-                warnings.append(f"[{name}] {blob[:7]} {where}:L{line_of(m.start())} -> {redact(m.group(0))}")
+                warnings.append(finding(name, m.start(), m.group(0)))
     return secrets, warnings
 
 
@@ -140,34 +154,37 @@ def self_test() -> int:
     def make_repo(root: Path, plant: bool) -> Path:
         repo = root / ("planted" if plant else "control")
         repo.mkdir()
-        run = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True,
-                                        timeout=GIT_TIMEOUT_SECONDS)
-        run("init", "-q", "-b", "main")
-        run("config", "user.email", "174849326+lou1sxluv2302@users.noreply.github.com")
-        run("config", "user.name", "self-test")
-        (repo / "notes.md").write_text("clean text\n", encoding="utf-8")
+        git(repo, "init", "-q", "-b", "main")
+        git(repo, "config", "user.email", "174849326+lou1sxluv2302@users.noreply.github.com")
+        git(repo, "config", "user.name", "self-test")
+        notes = "clean text\n" + ("contact jane.doe@corp.example\n" if plant else "")
+        (repo / "notes.md").write_text(notes, encoding="utf-8")
         if plant:
             (repo / "config.yml").write_text(f"aws_key: {fake_key}\n", encoding="utf-8")
-        run("add", "-A")
-        run("commit", "-q", "-m", "first")
+        git(repo, "add", "-A")
+        git(repo, "commit", "-q", "-m", "first")
         if plant:  # remove the key from the tip: it now lives only in an unreachable commit
             (repo / "config.yml").unlink()
-            run("add", "-A")
-            run("commit", "-q", "--amend", "-m", "first, key removed")
+            git(repo, "add", "-A")
+            git(repo, "commit", "-q", "--amend", "-m", "first, key removed")
         return repo
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         control = make_repo(root, plant=False)
         planted = make_repo(root, plant=True)
-        control_secrets, _ = scan(control)
-        planted_secrets, _ = scan(planted)
+        control_secrets, control_warnings = scan(control)
+        planted_secrets, planted_warnings = scan(planted)
         tip_files = git(planted, "ls-files").split()
 
     checks = {
         "control repo has no findings": control_secrets == [],
+        "control repo has no warnings (noreply author allowed)": control_warnings == [],
+        "planted personal e-mail is warned": any("[email]" in w for w in planted_warnings),
         "planted key is gone from the tip": "config.yml" not in tip_files,
-        "planted key is still found in history": any("aws_access_key" in s for s in planted_secrets),
+        "planted key is still found in history": any(
+            "aws_access_key" in s for s in planted_secrets
+        ),
         "finding is redacted": all(fake_key not in s for s in planted_secrets),
     }
     for name, ok in checks.items():
@@ -181,7 +198,9 @@ def main() -> int:
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--repo", type=Path, default=Path("."), help="repository to scan (default: .)")
+    parser.add_argument(
+        "--repo", type=Path, default=Path("."), help="repository to scan (default: .)"
+    )
     parser.add_argument("--self-test", action="store_true", help="run offline known-answer tests")
     args = parser.parse_args()  # rejects unknown arguments with exit code 2
     return self_test() if args.self_test else report(args.repo)

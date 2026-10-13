@@ -18,6 +18,18 @@ to be read. This file is the **single source** for the Git workflow.
   `--delete --force`, `checkout .` / `checkout -- .` / `restore .`. Implementation and
   tests: `.claude/hooks/`. This list is the single description of the guardrail.
 
+## Local setup
+
+```bash
+py -3.11 -m venv .venv
+.venv/Scripts/python -m pip install -e ".[dev]"
+.venv/Scripts/pre-commit install
+```
+
+On Linux or macOS use `python3.11` and `.venv/bin/`. Run every hook with
+`pre-commit run --all-files`. Machine-specific paths go in a git-ignored
+`CLAUDE.local.md`.
+
 ## Branches - GitHub Flow
 
 ```
