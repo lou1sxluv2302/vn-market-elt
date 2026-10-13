@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Agent workflow skills in `.claude/skills/`: `start-step`, `ship-pr`,
+  `security-audit`, `release` (owner-invoked) and `harvest-knowledge` (#2).
+- Engineering skills from mattpocock/skills wired in: `docs/agents/` configuration
+  (GitHub Issues, default triage labels, single-context domain docs).
+- Git guardrail hook for agents (Bash and PowerShell tools), with known-answer tests;
+  runs without `jq`.
 - Repository skeleton, English specification, 20 architecture decision records,
   glossary of Vietnamese market terms, engineering rules, domain router,
   contributing guide and security policy.
@@ -25,3 +31,8 @@ All notable changes to this project are documented here. The format follows
 - Spec v6: a stock-selection research track runs in a private companion
   repository (ADR-0023) under research discipline (ADR-0024); streaming is
   deferred behind it; tag plan re-mapped.
+
+### Changed
+- `CONTEXT.md` replaces `docs/glossary.md` as the project's language (ADR-0025
+  supersedes ADR-0015).
+- The ASCII hyphen is the only dash; a pre-commit hook rejects em and en dashes.

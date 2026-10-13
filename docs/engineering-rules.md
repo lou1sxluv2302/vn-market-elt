@@ -7,18 +7,18 @@ out of; the date and number are given so the rule can be argued with, not just o
 **Policy (D22, ADR-0022).** A rule is here only if it prevents irreversible harm, is standard practice, or a tool enforces it.
 Every rule is a default with an escape; the absolute guardrails are the four "Always on" items in [`CLAUDE.md`](../CLAUDE.md).
 
-**Recording an escape.** Note it next to the bypass (`# noqa: <code> — <reason>`, a dbt `meta.reason`, or a flag that logs
+**Recording an escape.** Note it next to the bypass (`# noqa: <code> - <reason>`, a dbt `meta.reason`, or a flag that logs
 its reason) and under **Deviations** in the PR description. Tools named below land in the phase that needs them (spec §6).
 
 Data-content lessons (units, adjusted vs raw prices, truncating sources, stale sessions) live in
-[`knowledge/data-quality-lessons.md`](knowledge/data-quality-lessons.md). Secrets and logging: [spec §14.4–14.5](spec.md#14-security).
+[`knowledge/data-quality-lessons.md`](knowledge/data-quality-lessons.md). Secrets and logging: [spec §14.4-14.5](spec.md#14-security).
 
 ## Verification
 
 - **Every script that computes or transforms ships `--self-test`: offline, synthetic data, a known answer.**\
   Why: v1 2026-08-05: six measurement bugs in one session, each producing a plausible wrong conclusion until run on a known answer.\
   Enforced by: CI `ci / self-test` discovers and runs every `--self-test`. Escape: a thin I/O wrapper with no logic is listed in the job's exemption list with a reason.
-- **Results have three states — ✅ passed · 🔴 failed · ⚪ not run — and only ✅ counts as passed.**\
+- **Results have three states - ✅ passed · 🔴 failed · ⚪ not run - and only ✅ counts as passed.**\
   Why: v1 2026-08-07: a check silently switched itself off past 25 rules; its ⚪ line was the only alarm, while its self-test stayed green.\
   Enforced by: CI fails when a required step is skipped; every dbt model with tests also has a non-empty test. Escape: a check that cannot apply by design reports ⚪ with its reason.
 - **Exit codes decide; printed text explains.**\
@@ -31,8 +31,8 @@ Data-content lessons (units, adjusted vs raw prices, truncating sources, stale s
   Why: v1 2026-08-05: DQ test 50 merged two conditions into 667 violations; splitting showed 667 + 0, one fixable and one not.\
   Enforced by: dbt generic tests are single-assertion by construction; review for singular tests. Escape: a composite test whose conditions share one fix names both in its description.
 - **Reconcile every new path against a known answer: per-batch counts, and the v1 DuckDB opened read-only.**\
-  Why: v1 2026-08-03: silver stood still at 2026-03-27 while bronze advanced and 54/54 validations passed — internal consistency is not cross-layer agreement.\
-  Enforced by: `tools/reconcile_duckdb.py` and dbt cross-layer count tests (S2, P1–P4 done-when). Escape: a mismatch caused by a known v1 defect is recorded with its cause in the reconcile report; tolerances stay as measured.
+  Why: v1 2026-08-03: silver stood still at 2026-03-27 while bronze advanced and 54/54 validations passed - internal consistency is not cross-layer agreement.\
+  Enforced by: `tools/reconcile_duckdb.py` and dbt cross-layer count tests (S2, P1-P4 done-when). Escape: a mismatch caused by a known v1 defect is recorded with its cause in the reconcile report; tolerances stay as measured.
 
 ## Boundaries and outbound calls
 
@@ -46,7 +46,7 @@ Data-content lessons (units, adjusted vs raw prices, truncating sources, stale s
   Why: v1 2026-08-14: `subprocess.run(timeout=)` killed only the direct child; a grandchild held the pipe open and the wait went on.\
   Enforced by: one helper in `vnmarket.common` with a self-test that spawns a grandchild. Escape: an in-process call with no children needs only the call-level limit.
 - **For a stream, the step timeout is the stall threshold `stale_alert_minutes` in `config/collector.yml`.**\
-  Why: a stalled WebSocket raises no error; the v1 2026-08-14 hang had the same shape — silence, not failure.\
+  Why: a stalled WebSocket raises no error; the v1 2026-08-14 hang had the same shape - silence, not failure.\
   Enforced by: `healthcheck.py`; S1 planted fault (cut the VM's network 5 min ⇒ the e-mail arrives). Escape: change the value in config, citing the S0 message rate.
 
 ## Loads and sources
@@ -61,7 +61,7 @@ Data-content lessons (units, adjusted vs raw prices, truncating sources, stale s
   Why: v1 2026-08-06: legacy history spliced to a newer vendor's tail made a false price jump at the splice in 42 % of symbols.\
   Enforced by: dbt `accepted_values` on `_source_id` per dataset. Escape: changing the primary source is a new ADR plus a full reload, never a splice.
 - **Measure coverage on every load and block the write when it falls short; thresholds are ratios, not counts.**\
-  Why: v1 (before 2026-08-04): a source silently returned its latest 100 rows — 400 of 2,891 sessions (13.8 %), every column 100 % non-null.\
+  Why: v1 (before 2026-08-04): a source silently returned its latest 100 rows - 400 of 2,891 sessions (13.8 %), every column 100 % non-null.\
   Enforced by: dbt coverage test against the trading calendar; a tripwire on round row counts (exactly 100 or 1,000). Escape: a known-partial source loads with its measured coverage set as the threshold in config.
 - **Checksum every transfer: crc32c on every GCS upload.**\
   Why: v1 2026-08-04: a mount served a stale 41,433 B copy of a 45,248 B file, which nearly overwrote newer work.\
@@ -70,7 +70,7 @@ Data-content lessons (units, adjusted vs raw prices, truncating sources, stale s
   Why: v1 2026-08-06: the source column is what let a test block 290 spliced rows by vendor; without it the splice was invisible.\
   Enforced by: dbt `not_null` on both columns in every source. Escape: none needed; a source without a natural id uses its loader's name.
 - **Loads are idempotent per partition; backfill and daily runs use the same code.**\
-  Why: v1 2026-08-07: a one-off loader was "idempotent" by deleting and rebuilding the store — safe on day one, it later erased 44,878,963 rows.\
+  Why: v1 2026-08-07: a one-off loader was "idempotent" by deleting and rebuilding the store - safe on day one, it later erased 44,878,963 rows.\
   Enforced by: self-tests load the same partition twice and compare counts. Escape: a one-time migration is dry-run by default and removed after use.
 
 ## dbt modelling
@@ -79,11 +79,11 @@ Data-content lessons (units, adjusted vs raw prices, truncating sources, stale s
   Why: v1 2026-08-16: `CREATE OR REPLACE` silently dropped primary keys; declared constraints are not enforced, and BigQuery does not enforce them either.\
   Enforced by: dbt tests; a CI check that every model has a `unique` test. Escape: a single-row model states "grain: one row" in its description.
 - **Select columns by name and build lineage with `ref()` and `source()`; avoid `SELECT *`.**\
-  Why: v1 2026-08-05: `SELECT i.*` carried a stale `exchange` over the corrected one — 260,054 rows (21.9 %) on the wrong exchange.\
+  Why: v1 2026-08-05: `SELECT i.*` carried a stale `exchange` over the corrected one - 260,054 rows (21.9 %) on the wrong exchange.\
   Enforced by: sqlfluff `AM04`; dbt lineage shows every copy to trace after a fix. Escape: `SELECT *` from a CTE whose columns are listed above it.
 - **Point in time: a row for date D uses only information published by D; rolling windows end at the previous row.**\
-  Why: v1 06a §v1.6.8: the source's market cap used a price ~105 days after period end — look-ahead; v1 recomputed it from stored prices.\
-  Enforced by: a truncation test — recompute with data after D removed and assert equal values. Escape: a reconciliation model may look ahead and says so in its name.
+  Why: v1 06a §v1.6.8: the source's market cap used a price ~105 days after period end - look-ahead; v1 recomputed it from stored prices.\
+  Enforced by: a truncation test - recompute with data after D removed and assert equal values. Escape: a reconciliation model may look ahead and says so in its name.
 - **Keep delisted symbols and bad periods; flag them instead of deleting.**\
   Why: v1: dropping delisted symbols is survivorship bias; stale sessions (32.5 % of rows) are flagged `is_stale` and excluded from calculations.\
   Enforced by: a dbt test that marts keep every symbol present in staging. Escape: exclusion happens in a filter on the flag, downstream.

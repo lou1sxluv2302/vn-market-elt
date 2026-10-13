@@ -1,4 +1,4 @@
-# infra/ — rules for agents
+# infra/ - rules for agents
 
 Loaded when working under `infra/`. Security design: `docs/spec.md` §14.
 
@@ -6,7 +6,7 @@ Loaded when working under `infra/`. Security design: `docs/spec.md` §14.
   `validate` and `plan`, and show the plan. The owner runs `apply` locally;
   CI only ever runs `plan` with the read-only `sa-ci`.
 - **Keyless.** Identities are attached service accounts, application-default
-  credentials, or Workload Identity Federation — a resource that needs a JSON
+  credentials, or Workload Identity Federation - a resource that needs a JSON
   key is redesigned.
 - **Least privilege, resource-scoped.** Grant roles on the bucket or dataset,
   not the project, wherever the API allows (§14.2 table is the target state).

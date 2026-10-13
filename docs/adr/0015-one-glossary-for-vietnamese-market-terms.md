@@ -1,6 +1,6 @@
 # ADR-0015: One glossary for Vietnamese market terms
 
-- Status: Accepted
+- Status: Superseded by [ADR-0025](0025-project-language-lives-in-context-md.md) (2026-10-13)
 - Date: 2026-10-06
 - Spec: D15
 

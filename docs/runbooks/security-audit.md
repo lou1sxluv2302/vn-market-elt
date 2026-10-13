@@ -1,4 +1,4 @@
-# Runbook — security audit
+# Runbook - security audit
 
 **When:** before the first push of a repository · before every release tag ·
 after any incident · at least monthly. **Who:** the agent runs it; the owner
@@ -28,7 +28,7 @@ approves every fix.
 - [ ] Public content: nothing from the private research repo; no vendor-internal
       licence or feed details; no local paths, account tiers or identifiers
 - [ ] Dependencies: pinned versions, Dependabot, `pip-audit`
-- [ ] When present — application code (authn/authz, injection, SSRF/XSS/CSRF,
+- [ ] When present - application code (authn/authz, injection, SSRF/XSS/CSRF,
       file handling, logging of sensitive data, crypto), CI workflows
       (`permissions:`, SHA-pinned actions, OIDC scope), Terraform (IAM scope,
       public access, firewall), containers and build artifacts

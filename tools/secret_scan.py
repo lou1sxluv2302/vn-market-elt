@@ -1,6 +1,6 @@
 """Scan every object in a git repository for secrets and identifying details.
 
-Every blob is scanned — reachable or not, so amended or rebased-away commits are
+Every blob is scanned - reachable or not, so amended or rebased-away commits are
 covered too. Values are printed redacted (first and last four characters only).
 
 Exit codes: 0 = no secret found · 1 = at least one secret found · 2 = usage or
@@ -177,7 +177,7 @@ def self_test() -> int:
 
 def main() -> int:
     # Windows pipes default to cp1252, which cannot encode ✅/🔴 and kills the process on
-    # the first print — the same failure v1 hit; force UTF-8 before any output.
+    # the first print - the same failure v1 hit; force UTF-8 before any output.
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])

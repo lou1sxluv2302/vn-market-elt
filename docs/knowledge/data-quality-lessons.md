@@ -4,19 +4,19 @@ This file lists the data-quality and measurement lessons that v1 (the private re
 Every lesson names the v1 incident, the v2 mechanism that prevents it, and the v1 source lines it comes from. Process rules (self-tests, three states, exit codes, timeouts, strict CLIs) are in [`engineering-rules.md`](../engineering-rules.md) and are not repeated here.
 v1 deleted and rebuilt its warehouse twice (2026-08-07, 2026-08-21). Read its numbers as orders of magnitude, always together with the population they were measured on.
 
-**Evidence tags:** ✅ measured or verified · ⚠️ from documentation · ❓ unverified · `measured on v1, <date>` = measured on v1's own DuckDB warehouse. Code names follow [`glossary.md`](../glossary.md).
+**Evidence tags:** ✅ measured or verified · ⚠️ from documentation · ❓ unverified · `measured on v1, <date>` = measured on v1's own DuckDB warehouse. Code names follow [`CONTEXT.md`](../../CONTEXT.md).
 
 ## Contents
 
-1. [Point-in-time and look-ahead](#1-point-in-time-and-look-ahead) — lessons 1–6
-2. [Sources and lineage](#2-sources-and-lineage) — lessons 7–11
-3. [Coverage and truncation](#3-coverage-and-truncation) — lessons 12–17
-4. [Units, scale and signs](#4-units-scale-and-signs) — lessons 18–21
-5. [Thresholds and denominators](#5-thresholds-and-denominators) — lessons 22–26
-6. [Tests that lie](#6-tests-that-lie) — lessons 27–33
-7. [Aggregation and comparison](#7-aggregation-and-comparison) — lessons 34–38
-8. [Storage, recovery and history](#8-storage-recovery-and-history) — lessons 39–41
-9. [Freshness and lag](#9-freshness-and-lag) — lessons 42–45
+1. [Point-in-time and look-ahead](#1-point-in-time-and-look-ahead) - lessons 1-6
+2. [Sources and lineage](#2-sources-and-lineage) - lessons 7-11
+3. [Coverage and truncation](#3-coverage-and-truncation) - lessons 12-17
+4. [Units, scale and signs](#4-units-scale-and-signs) - lessons 18-21
+5. [Thresholds and denominators](#5-thresholds-and-denominators) - lessons 22-26
+6. [Tests that lie](#6-tests-that-lie) - lessons 27-33
+7. [Aggregation and comparison](#7-aggregation-and-comparison) - lessons 34-38
+8. [Storage, recovery and history](#8-storage-recovery-and-history) - lessons 39-41
+9. [Freshness and lag](#9-freshness-and-lag) - lessons 42-45
 
 ---
 
@@ -82,7 +82,7 @@ v1 deleted and rebuilt its warehouse twice (2026-08-07, 2026-08-21). Read its nu
 ## 3. Coverage and truncation
 
 ### 12. Sources truncate silently, so coverage is measured and blocks the write
-- **What happened in v1:** `foreign_trade` returned only the latest 100 rows by default, with a server cap of 1,000 behind that. A 2015–2026 load got 400/2,891 sessions (13.8%), yet all 24 columns were 100% non-NULL and `matched + deal = total` held. The bronze file was overwritten anyway (✅ measured on v1). `news()` had a 90-day default window plus the 1,000-row cap.
+- **What happened in v1:** `foreign_trade` returned only the latest 100 rows by default, with a server cap of 1,000 behind that. A 2015-2026 load got 400/2,891 sessions (13.8%), yet all 24 columns were 100% non-NULL and `matched + deal = total` held. The bronze file was overwritten anyway (✅ measured on v1). `news()` had a 90-day default window plus the 1,000-row cap.
 - **In v2:** every dlt resource treats exactly 100 or 1,000 returned rows as a cap, not as data. A coverage gate (distinct `trade_date` against the calendar, per dataset) stops the load before it writes. A NULL rate never proves completeness: truncated data is *missing rows*, not empty cells.
 - **Source:** (v1 03 §5 R9, L319) · (v1 11 R9, L28) · (v1 02 Company.news, L761)
 
@@ -141,7 +141,7 @@ v1 deleted and rebuilt its warehouse twice (2026-08-07, 2026-08-21). Read its nu
 - **Source:** (v1 04 §7.1b, L281) · (v1 04 §7.8b, L436) · (v1 11 R20, L44) · (v1 07 §v1.9.5, L787) · (v1 10 GĐ2, L428)
 
 ### 23. One threshold answers one question, and ranking happens after filtering
-- **What happened in v1:** a fixed 10-billion-VND liquidity floor was 0.986% of market turnover in 2015 and 0.040% in 2025, a 24× drift. It answered both "is this tradeable?" and "is the breadth sample large enough?", which made 2013–2019 look "too thin". The fix split them (an absolute floor, and a relative top-150 base). The first version of the fix ran `ROW_NUMBER()` before filtering `exchange` and `is_stale`, so "top 150" held 107.7 symbols in 2015 (✅ measured on v1, 2026-08-05).
+- **What happened in v1:** a fixed 10-billion-VND liquidity floor was 0.986% of market turnover in 2015 and 0.040% in 2025, a 24× drift. It answered both "is this tradeable?" and "is the breadth sample large enough?", which made 2013-2019 look "too thin". The fix split them (an absolute floor, and a relative top-150 base). The first version of the fix ran `ROW_NUMBER()` before filtering `exchange` and `is_stale`, so "top 150" held 107.7 symbols in 2015 (✅ measured on v1, 2026-08-05).
 - **In v2:** a tradeability floor (`adv_20d_vnd`) and the breadth base are separate config keys. Ranking models filter first, and the test `assert_top_n_has_n_rows` checks the result.
 - **Source:** (v1 07 §v2.5.7, L1331) · (v1 07 §v2.5.8, L1380)
 
@@ -200,7 +200,7 @@ v1 deleted and rebuilt its warehouse twice (2026-08-07, 2026-08-21). Read its nu
 ## 7. Aggregation and comparison
 
 ### 34. Only like is compared with like
-- **What happened in v1:** a measured P/E of 7.95 nearly led to a "unit error" verdict, because it was set against the market's "10–18". That range is the cap-weighted index P/E. An equal-weight median over all symbols and sessions is 9.50 and is meant to be lower; cap-weighted over the universe gave 13.24, which matches (✅ measured on v1, 2026-08-04). Refuting A does not prove B. Different holding windows are different units.
+- **What happened in v1:** a measured P/E of 7.95 nearly led to a "unit error" verdict, because it was set against the market's "10-18". That range is the cap-weighted index P/E. An equal-weight median over all symbols and sessions is 9.50 and is meant to be lower; cap-weighted over the universe gave 13.24, which matches (✅ measured on v1, 2026-08-04). Refuting A does not prove B. Different holding windows are different units.
 - **In v2:** measure names state their weighting (`_median`, `_cap_weighted`). Power BI never puts two weightings on one axis.
 - **Source:** (v1 06a §v1.7.7, L479) · (v1 06 §6c, L519) · (v1 PLAN_load_fundamental §10.4, L435) · (v1 07 §v3.2, L2345)
 
@@ -210,7 +210,7 @@ v1 deleted and rebuilt its warehouse twice (2026-08-07, 2026-08-21). Read its nu
 - **Source:** (v1 02 §v1.5, L611) · (v1 PLAN_TONG_THE "Còn nợ đo", L3198)
 
 ### 36. Period keys are derived from the session set and each period reports its session count
-- **What happened in v1:** fixing the calendar renumbered sessions without recomputing week keys, which left 21 sessions (2012-11-23 → 2013-01-10) with a NULL `trading_week_id`. A month holds 14–23 sessions (64% spread). TTM built with `ROWS 3 PRECEDING` stretched across five real quarters when a quarter was missing. `SUM` skipped NULLs and gave 3-quarter totals. Annual ≠ the sum of 4 quarters (12/18 items matched in 2020) (✅ measured on v1).
+- **What happened in v1:** fixing the calendar renumbered sessions without recomputing week keys, which left 21 sessions (2012-11-23 → 2013-01-10) with a NULL `trading_week_id`. A month holds 14-23 sessions (64% spread). TTM built with `ROWS 3 PRECEDING` stretched across five real quarters when a quarter was missing. `SUM` skipped NULLs and gave 3-quarter totals. Annual ≠ the sum of 4 quarters (12/18 items matched in 2020) (✅ measured on v1).
 - **In v2:** `dim_trading_calendar` derives every period key in one model, and the session sequence is a tested stable key. Every period mart has `session_count` and an `is_period_complete` flag. Rolling periods use a period index with a per-column `COUNT = 4`. Audited annual figures and quarterly figures are never mixed.
 - **Source:** (v1 08 §v2.7.2 A, L453) · (v1 PLAN_TONG_THE TQ3, L940) · (v1 PLAN_load_fundamental §9.2, L317) · (v1 06a §v1.6.12, L250) · (v1 06a §v1.6.11, L302) · (v1 06 §1.2, L20)
 
@@ -251,10 +251,10 @@ v1 deleted and rebuilt its warehouse twice (2026-08-07, 2026-08-21). Read its nu
 ### 43. Freshness is anchored to the base layer, not to the neighbouring layer
 - **What happened in v1:** silver and gold stayed frozen at 2026-03-27 while bronze reached 08-03, and every internal test passed. A view and its table froze together for 11 sessions, so their symmetric difference stayed 0 (✅ measured on v1, 2026-08-03 and 08-07). The tolerance that was measured: 0 sessions for most layers, 1 for foreign flow.
 - **In v2:** each mart has a test comparing its latest `trade_date` with the raw price layer, using per-model tolerances in config. A tail-sparsity test requires ≥ 30 symbols in the last session.
-- **Source:** (v1 03 §5 R7, L317) · (v1 03 R7 tests 19–21, L359) · (v1 PLAN_TONG_THE §2.42, L3034) · (v1 PLAN_TONG_THE §2.36, L3221)
+- **Source:** (v1 03 §5 R7, L317) · (v1 03 R7 tests 19-21, L359) · (v1 PLAN_TONG_THE §2.42, L3034) · (v1 PLAN_TONG_THE §2.36, L3221)
 
 ### 44. Expected lag, stale-but-valid and dead are three different states
-- **What happened in v1:** US series were flagged "frozen" every day although they lag by one session by design, while WTI, which really was dead, got the same flag. Index APIs lag 1–2 h (❓). Annual macro lags 8–20 months. One company's statements were 1,938 days old but correctly point-in-time; 9.65% of TTM rows were stale (✅ measured on v1).
+- **What happened in v1:** US series were flagged "frozen" every day although they lag by one session by design, while WTI, which really was dead, got the same flag. Index APIs lag 1-2 h (❓). Annual macro lags 8-20 months. One company's statements were 1,938 days old but correctly point-in-time; 9.65% of TTM rows were stale (✅ measured on v1).
 - **In v2:** dbt source `freshness` uses a per-source expected lag from config. That constant is shared with any join window that uses it. Stale-but-valid rows keep their value plus a lag column and a flag, and are filtered downstream.
 - **Source:** (v1 08 §v2.9.30 D, L756) · (v1 03 §5 R2, L312) · (v1 PLAN_TONG_THE §M3, L1230) · (v1 06a §v1.7.4, L372) · (v1 PLAN_load_fundamental §10.2, L376) · (v1 06 §6c, L519)
 
@@ -265,4 +265,4 @@ v1 deleted and rebuilt its warehouse twice (2026-08-07, 2026-08-21). Read its nu
 
 ---
 
-New terms used here are defined in [`../glossary.md`](../glossary.md).
+New terms used here are defined in [`../../CONTEXT.md`](../../CONTEXT.md).

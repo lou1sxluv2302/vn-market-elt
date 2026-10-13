@@ -1,10 +1,10 @@
-# vn-market-elt — intraday Vietnamese market data on a cloud warehouse (ELT)
+# vn-market-elt - intraday Vietnamese market data on a cloud warehouse (ELT)
 
-Status: approved (v6, 2026-10-08; research split into a private repo 2026-10-13 — D23–D24; streaming deferred) · Work started 2026-10-08
+Status: approved (v6, 2026-10-08; research split into a private repo 2026-10-13 - D23-D24; streaming deferred) · Work started 2026-10-08
 Origin: the owner's earlier private research repository (the *main repo*);
 the Vietnamese source of this spec lives there at `.scratch/vts-elt/spec.md`.
 
-**Legend:** 👤 = owner does it (accounts, billing, entering API keys — things an
+**Legend:** 👤 = owner does it (accounts, billing, entering API keys - things an
 agent must not do) · 🤖 = agent does it · ⛔ = gate: stop and discuss if it
 fails · all hours are **estimates**.
 
@@ -15,32 +15,33 @@ fails · all hours are **estimates**.
 Checked = done. Updated 2026-10-13. Once GitHub milestones exist (step 0.6),
 they become the source of progress and this list is retired.
 
-**K0 — Knowledge harvest**
-- [x] K0.1 Inventory of v1's knowledge base — approved 2026-10-08 (kept in the private research repo)
-- [x] K0.2 Foundation translated — `market-microstructure.md`, `data-sources.md`, `data-quality-lessons.md`; `engineering-rules.md` rewritten (33 rules); glossary +32 terms
+**K0 - Knowledge harvest**
+- [x] K0.1 Inventory of v1's knowledge base - approved 2026-10-08 (kept in the private research repo)
+- [x] K0.2 Foundation translated - `market-microstructure.md`, `data-sources.md`, `data-quality-lessons.md`; `engineering-rules.md` rewritten (33 rules); glossary +32 terms
 - [ ] K0.3 Indicators, flows, BI conventions (research findings go to the private repo)
 
-**P0 — Foundations**
-- [x] 0.1 Repository skeleton, English spec, ADRs, glossary, knowledge harvest — all in the bootstrap commit on `main` (2026-10-13), local only
+**P0 - Foundations**
+- [x] 0.1 Repository skeleton, English spec, ADRs, glossary, knowledge harvest - all in the bootstrap commit on `main` (2026-10-13), local only
 - [x] 0.2 Main repo: KB update committed (`b2ddd44`), Vietnamese spec replaced by a pointer (`1785a9b`)
 - [ ] 0.3 GCP project, billing, $5 budget, `gcloud` installed and signed in (👤)
 - [x] 0.4 GitHub: public repo `lou1sxluv2302/vn-market-elt` created, `gh` signed in, personal git identity set (2FA to be confirmed by the owner)
 - [x] Commit the pending docs (folded into the bootstrap commit, 2026-10-13)
 - [x] Research content split into a private companion repo; README rewritten for a portfolio audience (2026-10-13)
-- [x] Security audit before first push (2026-10-13): no secrets; 2 Medium + 4 Low fixed — procedure in `docs/runbooks/security-audit.md`
-- [ ] Push `main` to GitHub (owner go-ahead)
-- [ ] 0.5 Repo security — config done (`.pre-commit-config.yaml`, `tools/secret_scan.py`, Dependabot, `.gitattributes`); left: `pre-commit install`, GitHub push protection
+- [x] Security audit before first push (2026-10-13): no secrets; 2 Medium + 4 Low fixed - procedure in `docs/runbooks/security-audit.md`
+- [x] Pushed 2026-10-13: public `main`; private companion repo created (visibility verified private) and pushed; Dependabot security updates on
+- [ ] Agent workflow skills, mattpocock/skills integration (`docs/agents/`, `CONTEXT.md`), git guardrail hook - PR for issue #2
+- [ ] 0.5 Repo security - config done (`.pre-commit-config.yaml`, `tools/secret_scan.py`, Dependabot, `.gitattributes`); left: `pre-commit install` (GitHub secret scanning and push protection verified on)
 - [ ] 0.6 GitHub ruleset, labels, milestones, templates
 - [ ] 0.7 Terraform (agent writes, owner applies)
 - [ ] 0.8 Minimal CI
 
 **Spec**
-- [x] v6 approved 2026-10-08 — research track before streaming (D23, D24); research moved to a private repo 2026-10-13
+- [x] v6 approved 2026-10-08 - research track before streaming (D23, D24); research moved to a private repo 2026-10-13
 
 **Cold path · research · streaming**
-- [ ] P1–P3 history load, dbt models, data-quality tests
-- [ ] Research track — tracked in the private repo
-- [ ] S0–S3 feed probe, collector, load, hot path
+- [ ] P1-P3 history load, dbt models, data-quality tests
+- [ ] Research track - tracked in the private repo
+- [ ] S0-S3 feed probe, collector, load, hot path
 - [ ] S4, P4, P5 → `v1.0.0`
 
 **Raised for the main repo, not acted on** (v1 is read-only from here; needs a separate decision)
@@ -70,9 +71,9 @@ forbid redistribution; publishing **code** is fine) · auto-refreshing dashboard
 
 | Fact | Value | Source |
 |---|---|---|
-| Duration of the 15:00 batch chain | **62–79 min** (2026-08-26 → 10-06) | main repo scheduler log |
+| Duration of the 15:00 batch chain | **62-79 min** (2026-08-26 → 10-06) | main repo scheduler log |
 | Where the time goes (2026-10-06) | Foreign/proprietary flow extraction: **~52 min / 613 slices**, 477 empty. Indicator computation: **339 s** | main repo run log |
-| ⇒ Bottleneck | **Waiting on the API**, not transformation. Switching ETL→ELT does **not** make it faster by itself; **streaming** does | — |
+| ⇒ Bottleneck | **Waiting on the API**, not transformation. Switching ETL→ELT does **not** make it faster by itself; **streaming** does | - |
 | Price history in the main repo | `vnstock_quote` 4,578,258 rows (2000-07-28 → 2026-10-06) · `vndirect_dchart` 8,787 | DuckDB query, 2026-10-06 |
 | vnstock plan | Paid sponsor plan; device-based licence counted per operating system | vendor account · main repo KB 02 §v1.7 |
 | Intraday feed | `vnstock_pipeline.stream.WSSClient`, VPS WebSocket. **Code read only, not yet run** | main repo KB 02 §v1.7 |
@@ -101,7 +102,7 @@ onward that no vendor can rewrite**.
 | D12 | **No JSON key files anywhere**, CI included | VM uses its attached service account; local uses ADC; GitHub Actions uses WIF; Power BI uses a Google login |
 | D13 | Secondary warehouses only **after P3**, same parquet, same dbt project | Earlier would mean fixing each bug in four places |
 | D14 | **Everything in this repository is in English**: identifiers, comments, commits, branches, tags, docs | Demo-ability. The main repo keeps its Vietnamese rule; one rule per repo |
-| D15 | Vietnamese market terms are translated through **one glossary**, `docs/glossary.md` | Two translations of one concept cannot be reconciled |
+| D15 | Vietnamese market terms are translated through **one glossary**, `CONTEXT.md` at the repo root (ADR-0025) | Two translations of one concept cannot be reconciled |
 | D16 | **GitHub Flow + Conventional Commits + SemVer** (`CONTRIBUTING.md`) | One long-lived branch is enough for a solo project; history still reads like a team's |
 | D17 | **The VM only runs tagged releases**, never `main` HEAD | The tag is what runs; rollback = deploy the previous tag |
 | D18 | Repository **`vn-market-elt`**, Python package `vnmarket` | Descriptive kebab-case English name |
@@ -109,14 +110,14 @@ onward that no vendor can rewrite**.
 | D20 | Infrastructure in **Terraform**; remote state in a dedicated versioned GCS bucket, never committed; `apply` runs on the owner's machine after reviewing `plan` | Reviewable plans and diffs |
 | D21 | **v2 inherits v1's knowledge through a reviewed harvest** (phase K0). Once migrated, the copy in `docs/knowledge/` is the source of truth for v2; v1 is a frozen reference and the two may diverge. Numbers measured on v1's warehouse keep the label *measured on v1, <date>* | v1 holds hard-won market knowledge, but also infrastructure and model errors that must not be inherited silently |
 | D22 | **v2's rules are re-selected, not copied.** A rule stays only if it prevents irreversible harm, is standard industry practice, or can be enforced by a tool (CI, dbt test, gitleaks, ruleset); tool-enforced rules are preferred. Rules are written as defaults with a stated escape, except the always-on guardrails in `CLAUDE.md` | v1 accumulated many strict rules fitted to its own architecture (single DuckDB file, Task Scheduler, rebuild order) that do not transfer |
-| D23 | **A stock-selection research track runs in a private companion repository**, scheduled before streaming (S0–S3); this repository supplies its data foundation | The owner's priority; research content is a private asset and is not published |
-| D24 | **Research discipline is kept even though v1's process rules are not**: pre-registration before any run · a random same-session control · `n_eff` for overlapping windows · exploration on 2015–2020 only · confirmation only by forward accumulation · no parameter tuning toward a better result | These rules protect conclusions, not infrastructure; v1's 11 refuted hypotheses are their track record |
+| D23 | **A stock-selection research track runs in a private companion repository**, scheduled before streaming (S0-S3); this repository supplies its data foundation | The owner's priority; research content is a private asset and is not published |
+| D24 | **Research discipline is kept even though v1's process rules are not**: pre-registration before any run · a random same-session control · `n_eff` for overlapping windows · exploration on 2015-2020 only · confirmation only by forward accumulation · no parameter tuning toward a better result | These rules protect conclusions, not infrastructure; v1's 11 refuted hypotheses are their track record |
 
 ## 4. Architecture
 
 ```
                      ┌──────────── VM collector-prod-01 (e2-micro, us-central1) ────────────┐
-VPS feed (WebSocket) ┼─► stream_collector (systemd 08:55–15:05) ─► parquet batch / 60 s ─────┼─► GCS raw bucket
+VPS feed (WebSocket) ┼─► stream_collector (systemd 08:55-15:05) ─► parquet batch / 60 s ─────┼─► GCS raw bucket
                      │   healthcheck: no new message > 3 min ⇒ email                         │        │
                      │   ingress: IAP only · runs as user `collector` · tag-pinned release   │        ▼
                      └───────────────────────────────────────────────────────────────────────┘  BigQuery raw_vps_stream
@@ -145,45 +146,45 @@ for exactly one bar.
 
 🔴 **Never mix intraday prices with adjusted history.** Every intraday
 comparison uses the feed's own **`reference_price_vnd`**, never the adjusted
-close of `vnstock_quote` — that is wrong on ex-rights days.
+close of `vnstock_quote` - that is wrong on ex-rights days.
 
 ## 5. Latency budget (hot path)
 
 | Hop | Estimate | Measured in |
 |---|---|---|
 | Feed → collector | seconds | S0: received time − message time |
-| Batching | ≤ 60 s | — |
-| Upload to GCS + BigQuery load | 10–60 s | S2 |
+| Batching | ≤ 60 s | - |
+| Upload to GCS + BigQuery load | 10-60 s | S2 |
 | dbt view + Power BI refresh | seconds to ~1 min | S3 |
-| **Total** | **~2–3 min** | S3: wall clock during a live session |
+| **Total** | **~2-3 min** | S3: wall clock during a live session |
 
 If a view is slow because it parses raw JSON every time, switch **only that
 model** to incremental (only then is a cron needed), based on measurements.
 
-## 6. Phases — main path on BigQuery
+## 6. Phases - main path on BigQuery
 
 Each phase = one **GitHub milestone**; each step = one issue + one branch + one
 PR; a finished phase = one tag (`CONTRIBUTING.md`).
 
-**Execution order (v6):** K0 → P0 → K0.3 → P1–P3 → research track (private
-repo) → S0–S3 → S4, P4, P5. Streaming waits behind the research track (D23);
+**Execution order (v6):** K0 → P0 → K0.3 → P1-P3 → research track (private
+repo) → S0-S3 → S4, P4, P5. Streaming waits behind the research track (D23);
 the sections below are reference, not sequence.
 
-### K0 — Knowledge harvest from v1 (~9 h, part of `v0.1.0`)
+### K0 - Knowledge harvest from v1 (~9 h, part of `v0.1.0`)
 
 | Step | Who | Work |
 |---|---|---|
-| K0.1 | 🤖 → 👤 | **Inventory**: label every section of v1's knowledge base — `KEEP` (still-valid knowledge) · `LESSON` (incident, condensed) · `V1-RULE` (drop, or rewrite if it passes D22) · `STALE` (outdated or wrong, with the reason) · `RESEARCH` (research knowledge; now needed by track R, D23). Output kept in the private research repo; **the owner approves it before any translation** |
+| K0.1 | 🤖 → 👤 | **Inventory**: label every section of v1's knowledge base - `KEEP` (still-valid knowledge) · `LESSON` (incident, condensed) · `V1-RULE` (drop, or rewrite if it passes D22) · `STALE` (outdated or wrong, with the reason) · `RESEARCH` (research knowledge; now needed by track R, D23). Output kept in the private research repo; **the owner approves it before any translation** |
 | K0.2 | 🤖 | Translate and condense the foundation every phase needs: market microstructure, data sources and the feed, data-architecture lessons → `docs/knowledge/` |
 | K0.3 | 🤖 | Indicators, flows and BI conventions, in the phase that needs them. v1's research findings go to the private research repo |
 
 Every migrated fact keeps its evidence level (✅ measured · ⚠️ from documentation · ❓ unverified) and its v1 source section.
 
-### P0 — Foundations (~11 h, tag `v0.1.0`)
+### P0 - Foundations (~11 h, tag `v0.1.0`)
 
 | Step | Who | Work |
 |---|---|---|
-| 0.1 | 🤖 | Repository skeleton; `git init -b main`; this English spec; one ADR per decision; `docs/glossary.md` |
+| 0.1 | 🤖 | Repository skeleton; `git init -b main`; this English spec; one ADR per decision; the glossary (now `CONTEXT.md`) |
 | 0.2 | 🤖 | Main repo: commit KB update and the Vietnamese spec (done, `b2ddd44`); replace that spec with a pointer here |
 | 0.3 | 👤 | GCP: project · billing · **budget $5 with alerts at 20% and 100%** · 2-step verification · install `gcloud`; run `gcloud auth login` and `gcloud auth application-default login` |
 | 0.4 | 👤 | GitHub: 2FA · install `gh`, run `gh auth login` · create the empty public repo `vn-market-elt` (done) |
@@ -198,26 +199,26 @@ vn-market-elt/
 ├── .github/        workflows/ (ci, infra, security, release) · ISSUE_TEMPLATE/ · pull_request_template.md · CODEOWNERS · dependabot.yml
 ├── CLAUDE.md       agent router (topic → file); directory rules in nested CLAUDE.md
 ├── README.md · SECURITY.md · CONTRIBUTING.md · CHANGELOG.md · LICENSE
-├── docs/           spec.md · engineering-rules.md · domain.md · glossary.md · knowledge/ · adr/ · runbooks/ · reports/
+├── docs/           spec.md · engineering-rules.md · domain.md · knowledge/ · adr/ · runbooks/ · reports/
 ├── config/         *.yml (no constants in Python) · env/<env>.example.yml
 ├── src/vnmarket/   collector/ · el/ · common/
 ├── dbt/            models/{staging,intermediate,marts/intraday,marts/daily} · seeds · macros · tests
 ├── infra/          terraform/ · systemd/ · deploy.sh
 ├── tools/          gate.py · reconcile_duckdb.py
-├── tests/fixtures/ synthetic data only — NEVER real market data
-├── bi/             *.pbix — git-ignored
-└── data/           local buffer — git-ignored
+├── tests/fixtures/ synthetic data only - NEVER real market data
+├── bi/             *.pbix - git-ignored
+└── data/           local buffer - git-ignored
 ```
 
 **Done when:** SSH via IAP works · `bq ls` shows the datasets · budget alert on ·
 a test PR is blocked while CI is red · gitleaks blocks a planted fake key.
 
-### S0 — Feed probe (~4 h, part of `v0.3.0`) ⛔ gate: go to the cloud or not
+### S0 - Feed probe (~4 h, part of `v0.3.0`) ⛔ gate: go to the cloud or not
 
 | Step | Who | Work |
 |---|---|---|
 | S0.1 | 🤖 | `src/vnmarket/collector/feed_probe.py --minutes N --symbols <list> --out <dir>`: write **every message verbatim** to JSONL with `received_at`. Rejects unknown arguments. Timeouts everywhere. `--self-test` on synthetic messages with known answers, including planted malformed messages and disconnects |
-| S0.2 | 👤🤖 | **Run locally for 30 min, session of 2026-10-09 around 09:30–10:00** (avoid the opening auction): 30 universe symbols + indices. Uses the **main repo's virtualenv** (already has `vnstock_pipeline`, same Windows device id ⇒ no new licence slot); writes nothing into the main repo |
+| S0.2 | 👤🤖 | **Run locally for 30 min, session of 2026-10-09 around 09:30-10:00** (avoid the opening auction): 30 universe symbols + indices. Uses the **main repo's virtualenv** (already has `vnstock_pipeline`, same Windows device id ⇒ no new licence slot); writes nothing into the main repo |
 | S0.3 | 👤 | Check the vnstock device page: free Linux slots |
 | S0.4 | 👤🤖 | Owner stores the vnstock API key in Secret Manager (once) and runs the vnstock installer on the VM over IAP SSH; agent repeats the 30-minute probe there |
 
@@ -230,32 +231,32 @@ no raw data.**
 Vietnam-hosted VPS, or collect locally and push to the cloud · not enough RAM ⇒
 decide whether to upsize (leaves the free tier).
 
-### S1 — Collector in production (~8 h, tag `v0.3.0`)
+### S1 - Collector in production (~8 h, tag `v0.3.0`)
 
 - `stream_collector.py`: WebSocket → buffer → every **60 s** write `dt=YYYY-MM-DD/batch=HHMMSS.parquet`, storing the **verbatim message** (`payload` JSON) + `received_at` + `batch_id`; parsing is dbt's job.
 - `uploader.py`: upload batches to GCS with retries and timeouts.
 - `healthcheck.py`: during trading hours, **no new message for 3 min** ⇒ email.
-- `infra/systemd/vnmarket-collector.service` + `.timer`: restart on failure; start **08:55**, stop **15:05**, Mon–Fri; systemd sandboxing (§14.4).
+- `infra/systemd/vnmarket-collector.service` + `.timer`: restart on failure; start **08:55**, stop **15:05**, Mon-Fri; systemd sandboxing (§14.4).
 - Holiday calendar from seed `trading_calendar`, **copied once** from the main repo with provenance. No row for today ⇒ **run anyway** (a missed real session is lost forever; an unnecessary run costs one warning).
 - Deployment: the VM checks out **exactly one tag** (D17) via `infra/deploy.sh <tag>`.
 
 **Done when:** 5 consecutive sessions, every data gap matched by an alert.
 **Planted fault:** cut the VM's network for 5 minutes ⇒ the email must arrive.
 
-### S2 — Load into the warehouse (~4 h, part of `v0.4.0`)
+### S2 - Load into the warehouse (~4 h, part of `v0.4.0`)
 
 After each batch: load job GCS → `raw_vps_stream.messages`, partitioned by `dt`.
 **Done when:** message counts in BigQuery equal those in parquet, **per batch**.
 
-### S3 — Hot path: dbt views + Power BI (~7 h, tag `v0.4.0`)
+### S3 - Hot path: dbt views + Power BI (~7 h, tag `v0.4.0`)
 
 - dbt: `stg_vps_stream__<message_type>` → `int_quotes__latest_by_symbol` → `marts/intraday/*`, **materialized as views**, reading today's partition only.
 - Power BI Desktop: Get Data → Google BigQuery, Google login, **connect only to `marts_*`** (a convention, not a barrier: the owner's account can see everything).
-- **Q7 (setup list):** requires changing the main repo's 15:00 chain to upload `setup_hom_nay.json` to GCS — a change to a running system, **approved separately**.
+- **Q7 (setup list):** requires changing the main repo's 15:00 chain to upload `setup_hom_nay.json` to GCS - a change to a running system, **approved separately**.
 
 **Done when:** in a live session, a refresh at T+5 min shows the state at T (wall clock).
 
-### P1–P3 — Cold path (~18 h, tag `v0.2.0`)
+### P1-P3 - Cold path (~18 h, tag `v0.2.0`)
 
 | Phase | Work | Done when |
 |---|---|---|
@@ -277,7 +278,7 @@ follows (D24); nothing about the hypotheses or their results is published here.
 
 | Phase | Work | Done when |
 |---|---|---|
-| S4 | Daily bars rebuilt from ticks vs. vnstock end-of-day OHLC — measures collector completeness | Every deviation explained |
+| S4 | Daily bars rebuilt from ticks vs. vnstock end-of-day OHLC - measures collector completeness | Every deviation explained |
 | P4 | Incremental load after 16:30; detect vendor history rewrites by comparing the overlap window (Q1) | 10 consecutive sessions match DuckDB |
 | P5 | Demo README (architecture, dashboard screenshots on **synthetic data**, dbt lineage) · CI adds `dbt build` on **DuckDB with synthetic data** · full security review (§14.8) | **`v1.0.0`: demo-ready** |
 
@@ -300,14 +301,14 @@ gets **the same §14 rules** (dedicated users, least privilege, no long-lived ke
 
 | Block | Hours (est.) | Milestone |
 |---|---|---|
-| K0.1–K0.2 | ~9 | done 2026-10-08 |
+| K0.1-K0.2 | ~9 | done 2026-10-08 |
 | P0 | ~11 | ~10-15 |
 | K0.3 | ~8 | ~10-19 |
-| P1–P3 | ~18 | ~10-30 · cold path matches DuckDB |
+| P1-P3 | ~18 | ~10-30 · cold path matches DuckDB |
 | Research track (private repo) | ~26 | ~11-14 |
-| S0–S3 | ~23 | ~11-28 · **⛔ cloud gate**, then hot path live |
+| S0-S3 | ~23 | ~11-28 · **⛔ cloud gate**, then hot path live |
 | S4, P4, P5 | ~18 | ~12-09 · **`v1.0.0`** |
-| HNX→HOSE switch | — | 2026-12-28 · plan a `v1.x` release |
+| HNX→HOSE switch | - | 2026-12-28 · plan a `v1.x` release |
 | X1 → X2 → (X3) | ~10 / ~10 / ~6 | after `v1.0.0` |
 | **Main path** | **~113** | |
 
@@ -317,10 +318,10 @@ this estimate is wrong.
 
 ## 9. Deliberately deferred
 
-- **Auto-refresh dashboards:** Grafana Cloud — not part of the current plan (BI is
+- **Auto-refresh dashboards:** Grafana Cloud - not part of the current plan (BI is
   Power BI with manual refresh, D10). Checked 2026-10-06: the official Apache-2.0
   BigQuery plugin supports keyless auth via Workload Identity Federation (not
-  tried). If adopted: refresh **every 5 min, no faster** — BigQuery bills at least
+  tried). If adopted: refresh **every 5 min, no faster** - BigQuery bills at least
   10 MB per table per query ⇒ 10 panels refreshed every minute ≈ 0.8 TB/month,
   close to the 1 TB free tier.
 - Looker Studio · Lightdash (semantic layer) · Zalo alerts · automated releases (release-please).
@@ -359,7 +360,7 @@ units, scope, stale sessions): [`domain.md`](domain.md).
 ## 13. Naming conventions
 
 One rule: **a name must equal what it holds.** No abbreviations unless listed in
-the glossary.
+`CONTEXT.md`.
 
 ### 13.1 Repository, Python, CLI
 
@@ -384,7 +385,7 @@ the glossary.
 | `_pct` | percentage ×100 | `change_pct` |
 | `_ratio` | ratio, not ×100 | `foreign_ownership_ratio` |
 | `is_` / `has_` | BOOLEAN | `is_stale` |
-| `_id` | technical key (exception: securities are always `symbol`) | `batch_id` |
+| `_id` | technical key; a security's stable key is `security_id`, its ticker column is `symbol` | `batch_id`, `security_id` |
 | `_count` | count | `advancing_count` |
 | leading `_` | technical, non-business column | `_ingested_at`, `_source_id` |
 
@@ -396,7 +397,7 @@ the glossary.
 | staging | `stg_<source>__<entity>` | `stg_vps_stream__quotes` |
 | intermediate | `int_<entity>__<transform>` | `int_quotes__latest_by_symbol` |
 | fact / dimension | `fct_<process>` · `dim_<entity>` | `fct_intraday_breadth`, `dim_security` |
-| mart folders | `marts/intraday/` · `marts/daily/` | — |
+| mart folders | `marts/intraday/` · `marts/daily/` | - |
 | singular test | `assert_<invariant>` | `assert_close_within_price_band` |
 | macro | verb | `to_vn_date()` |
 | seed | plural noun or rule name | `market_rules`, `trading_calendar` |
@@ -412,7 +413,7 @@ the glossary.
 | Service account | `sa-<role>` | `sa-collector`, `sa-dbt`, `sa-bi-reader`, `sa-ci` |
 | Resource labels | `project`, `env`, `component`, `managed_by` | `managed_by=terraform` |
 
-Glossary of Vietnamese market terms: [`glossary.md`](glossary.md).
+Glossary of Vietnamese market terms: [`../CONTEXT.md`](../CONTEXT.md).
 
 ## 14. Security
 
@@ -456,7 +457,7 @@ See [`../SECURITY.md`](../SECURITY.md) for the reporting policy. Design rules:
 
 - The collector runs as a dedicated non-root user `collector` without a login shell.
 - systemd: `NoNewPrivileges=yes` · `ProtectSystem=strict` · `ProtectHome=read-only` (except the data dir and `~collector/.vnstock`) · `PrivateTmp=yes` · `ReadWritePaths=` buffer only.
-- Logs never contain keys, tokens or long raw messages — counts and error codes only.
+- Logs never contain keys, tokens or long raw messages - counts and error codes only.
 
 ### 14.5 Secrets
 
@@ -465,7 +466,7 @@ See [`../SECURITY.md`](../SECURITY.md) for the reporting policy. Design rules:
 | vnstock API key | Secret Manager `vnstock-api-key` | On deploy, `sa-collector` reads it and writes `~collector/.vnstock/api_key.json` (mode 600). The owner enters it once |
 | Alert e-mail app password | Secret Manager | Same |
 | GCP credentials | None (D12) | Metadata server / ADC / WIF |
-| Environment values (project id, bucket names) | `config/env/prod.yml` — **git-ignored**; only `*.example.yml` is committed | Read at runtime |
+| Environment values (project id, bucket names) | `config/env/prod.yml` - **git-ignored**; only `*.example.yml` is committed | Read at runtime |
 
 Code obtains secrets through **one module**, `vnmarket.common.secrets`.
 
@@ -490,10 +491,10 @@ Code obtains secrets through **one module**, `vnmarket.common.secrets`.
 ### 14.8 Data and warehouse
 
 - Buckets: uniform bucket-level access · **public access prevention enforced** · versioning · never `allUsers`.
-- The raw stream bucket has **no deletion lifecycle** — stream samples cannot be re-captured. Watch the 5 GB free tier.
+- The raw stream bucket has **no deletion lifecycle** - stream samples cannot be re-captured. Watch the 5 GB free tier.
 - `dev_*` datasets: 7-day table expiration.
 - README screenshots use **synthetic data** only.
-- Two layers of checks (repo is public, D19): **every PR** — gitleaks on the diff, data-file block. **Before every tag** and as a `v1.0.0` condition — gitleaks over full history = 0 · no data file ever in history · no project id or e-mail in code · no user-managed service-account keys.
+- Two layers of checks (repo is public, D19): **every PR** - gitleaks on the diff, data-file block. **Before every tag** and as a `v1.0.0` condition - gitleaks over full history = 0 · no data file ever in history · no project id or e-mail in code · no user-managed service-account keys.
 
 ### 14.9 Monitoring
 
@@ -503,5 +504,5 @@ Code obtains secrets through **one module**, `vnmarket.common.secrets`.
 
 ## 15. GitHub workflow
 
-See [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — branches, commits, tags,
+See [`../CONTRIBUTING.md`](../CONTRIBUTING.md) - branches, commits, tags,
 releases, rulesets, labels and milestones are defined there, once.

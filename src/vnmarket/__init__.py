@@ -1,1 +1,1 @@
-"""vnmarket — intraday Vietnamese market data on a cloud warehouse."""
+"""vnmarket - intraday Vietnamese market data on a cloud warehouse."""

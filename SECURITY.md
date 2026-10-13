@@ -14,7 +14,7 @@ repository. You will get an acknowledgement within 7 days.
 - **Market data.** The data vendors used here do not allow redistribution. Only
   synthetic fixtures live in `tests/fixtures/`; dashboards and screenshots in
   docs use synthetic data.
-- **Environment identifiers** such as the GCP project id or bucket names — they
+- **Environment identifiers** such as the GCP project id or bucket names - they
   live in git-ignored `config/env/*.yml`; only `*.example.yml` is committed.
 - **Personal or work e-mail addresses.** Commits use the GitHub noreply address.
 

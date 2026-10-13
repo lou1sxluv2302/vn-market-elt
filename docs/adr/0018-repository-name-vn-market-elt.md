@@ -14,4 +14,4 @@ GitHub repository `vn-market-elt`; Python package `vnmarket`; the local folder k
 
 ## Consequences
 
-—
+None.

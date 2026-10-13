@@ -6,7 +6,7 @@
 
 ## Context
 
-The batch chain takes 62–79 minutes, mostly waiting on an API. The goal is ≤ 5 minutes of latency during the session.
+The batch chain takes 62-79 minutes, mostly waiting on an API. The goal is ≤ 5 minutes of latency during the session.
 
 ## Decision
 
