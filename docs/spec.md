@@ -23,7 +23,7 @@ they become the source of progress and this list is retired.
 **P0 - Foundations**
 - [x] 0.1 Repository skeleton, English spec, ADRs, glossary, knowledge harvest - all in the bootstrap commit on `main` (2026-10-13), local only
 - [x] 0.2 Main repo: KB update committed (`b2ddd44`), Vietnamese spec replaced by a pointer (`1785a9b`)
-- [ ] 0.3 GCP project, billing, $5 budget, `gcloud` installed and signed in (👤)
+- [x] 0.3 GCP project, billing, $5 budget (credits excluded, alerts 20% / 100% / forecast), 2-step verification, `gcloud` and ADC with quota project (👤, 2026-10-13)
 - [x] 0.4 GitHub: public repo `lou1sxluv2302/vn-market-elt` created, `gh` signed in, personal git identity set (2FA to be confirmed by the owner)
 - [x] Commit the pending docs (folded into the bootstrap commit, 2026-10-13)
 - [x] Research content split into a private companion repo; README rewritten for a portfolio audience (2026-10-13)
@@ -32,7 +32,7 @@ they become the source of progress and this list is retired.
 - [x] Agent workflow skills, mattpocock/skills integration (`docs/agents/`, `CONTEXT.md`), git guardrail hook - PR #5, merged 2026-10-13
 - [x] 0.5 Repo security - pre-commit installed and green on the whole repo (secret scan, gitleaks, private keys, large files, data files, dashes, ruff); Dependabot; GitHub secret scanning and push protection on (#6)
 - [x] 0.6 Rulesets `protect-main` and `protect-release-tags`, squash-only, auto-delete branches, labels, phase milestones, PR/issue templates, CODEOWNERS (#7); status checks join the ruleset in 0.8
-- [ ] 0.7 Terraform (agent writes, owner applies)
+- [ ] 0.7 Terraform (#14) - code, validate and plan done; left: owner applies `bootstrap` then `main`, stores the CI secrets, `infra / terraform-plan` runs green. 0.7b (VM + IAP firewall) is written and applied at S0 (ADR-0027)
 - [x] 0.8 Minimal CI - workflows `ci` and `security`, required in `protect-main`; a red PR was blocked and a planted key caught (#9). Terraform checks arrive with 0.7
 
 **Spec**
@@ -93,7 +93,7 @@ onward that no vendor can rewrite**.
 | D3 | **dlt** for EL, **dbt** for T | Standard ELT pair; dbt is warehouse-portable |
 | D4 | **BigQuery** is the primary warehouse; Snowflake, Athena, Databricks are comparison phases (§7) | Perpetual free tier; matches day-job stack |
 | D5 | **Intraday streaming**, loaded in 60-second batches | Goal 1 |
-| D6 | **Cloud from day one**: Compute Engine **e2-micro** in `us-central1`; GCS and BigQuery in `US` | Perpetual free tier; persistent disk keeps the vnstock device id ⇒ one licence slot |
+| D6 | **Cloud from day one**: Compute Engine **e2-micro** in `us-central1`; GCS in **`us-central1`** (the free tier covers US regions, not the `US` multi-region); BigQuery in `US` (ADR-0027) | Perpetual free tier; persistent disk keeps the vnstock device id ⇒ one licence slot |
 | D7 | **No** Cloud Run or ephemeral containers for the collector | Each start may register a new device ⇒ HTTP 429 |
 | D8 | VPS feed terms-of-use risk: **accepted** | Owner decision, 2026-10-06 |
 | D9 | A process running for the whole session: **accepted** | Owner decision, 2026-10-06 |
@@ -190,7 +190,7 @@ Every migrated fact keeps its evidence level (✅ measured · ⚠️ from docume
 | 0.4 | 👤 | GitHub: 2FA · install `gh`, run `gh auth login` · create the empty public repo `vn-market-elt` (done) |
 | 0.5 | 🤖 | Repo security (§14.6): `.gitignore` · pre-commit (gitleaks, ruff) · `SECURITY.md` · Dependabot · secret scanning + push protection |
 | 0.6 | 🤖 | GitHub (`CONTRIBUTING.md`): `main` ruleset · labels · milestones P0…X3 · PR/issue templates · `CODEOWNERS` |
-| 0.7 | 🤖👤 | Terraform (D20): agent writes, owner reviews `terraform plan` and runs `apply`. Creates: buckets · datasets · VM · 4 service accounts · IAP-only firewall · WIF for GitHub Actions · Secret Manager containers (no values) |
+| 0.7 | 🤖👤 | Terraform (D20): agent writes, owner reviews `terraform plan` and runs `apply`. 0.7a creates: state and raw buckets · datasets · 4 service accounts · WIF for GitHub Actions · Secret Manager container (no value) · security alerts. 0.7b (VM in its own VPC + IAP-only firewall) is written now and applied at S0 (ADR-0027) |
 | 0.8 | 🤖 | Minimal CI: the P0 required checks (`CONTRIBUTING.md`) |
 
 Repository layout:
@@ -210,7 +210,7 @@ vn-market-elt/
 └── data/           local buffer - git-ignored
 ```
 
-**Done when:** SSH via IAP works · `bq ls` shows the datasets · budget alert on ·
+**Done when:** `bq ls` shows the datasets · budget alert on · `infra / terraform-plan` green through WIF ·
 a test PR is blocked while CI is red · gitleaks blocks a planted fake key.
 
 ### S0 - Feed probe (~4 h, part of `v0.3.0`) ⛔ gate: go to the cloud or not
@@ -220,6 +220,7 @@ a test PR is blocked while CI is red · gitleaks blocks a planted fake key.
 | S0.1 | 🤖 | `src/vnmarket/collector/feed_probe.py --minutes N --symbols <list> --out <dir>`: write **every message verbatim** to JSONL with `received_at`. Rejects unknown arguments. Timeouts everywhere. `--self-test` on synthetic messages with known answers, including planted malformed messages and disconnects |
 | S0.2 | 👤🤖 | **Run locally for 30 min, session of 2026-10-09 around 09:30-10:00** (avoid the opening auction): 30 universe symbols + indices. Uses the **main repo's virtualenv** (already has `vnstock_pipeline`, same Windows device id ⇒ no new licence slot); writes nothing into the main repo |
 | S0.3 | 👤 | Check the vnstock device page: free Linux slots |
+| S0.3b | 👤🤖 | Apply 0.7b (`create_vm = true`): VM, its VPC and the IAP-only firewall. **Done when** SSH through IAP works |
 | S0.4 | 👤🤖 | Owner stores the vnstock API key in Secret Manager (once) and runs the vnstock installer on the VM over IAP SSH; agent repeats the 30-minute probe there |
 
 S0 report (`docs/reports/s0-feed-probe.md`): messages/min · MB/min · latency ·
@@ -410,7 +411,7 @@ One rule: **a name must equal what it holds.** No abbreviations unless listed in
 | GCS bucket | `<project-id>-<env>-<purpose>` | `<project-id>-prod-raw` |
 | Object path | Hive partitions | `vps_stream/dt=2026-10-09/batch=093000.parquet` |
 | VM | `<role>-<env>-<NN>` | `collector-prod-01` |
-| Service account | `sa-<role>` | `sa-collector`, `sa-dbt`, `sa-bi-reader`, `sa-ci` |
+| Service account | `sa-<role>` | `sa-collector`, `sa-dbt`, `sa-bi-reader`, `sa-ci-plan` |
 | Resource labels | `project`, `env`, `component`, `managed_by` | `managed_by=terraform` |
 
 Glossary of Vietnamese market terms: [`../CONTEXT.md`](../CONTEXT.md).
@@ -433,10 +434,10 @@ See [`../SECURITY.md`](../SECURITY.md) for the reporting policy. Design rules:
 | Identity | Used by | Permissions (resource-scoped wherever possible) |
 |---|---|---|
 | Owner's Google account | Console, local Terraform, Power BI | Project owner. **2FA mandatory** |
-| `sa-collector` | Attached to the VM | `storage.objectCreator` **on the raw bucket only** · `bigquery.jobUser` · `bigquery.dataEditor` **on `raw_vps_stream` only** · secret accessor on its own secrets |
+| `sa-collector` | Attached to the VM | `storage.objectCreator` **on the raw bucket only** · `bigquery.jobUser` · `bigquery.dataEditor` **on `raw_vps_stream` only** · secret accessor on its own secrets · `logging.logWriter` and `monitoring.metricWriter` (VM logs and metrics) |
 | `sa-dbt` | dbt runs | `dataViewer` on `raw_*` · `dataEditor` on `staging`, `intermediate`, `marts_*` · `jobUser` |
 | `sa-bi-reader` | Reserved for future BI (Grafana) | `dataViewer` on `marts_*` only · `jobUser` |
-| `sa-ci` | GitHub Actions via WIF | **Read-only**: enough for `terraform plan`. No BigQuery access (CI runs dbt on DuckDB). `apply` never runs in CI |
+| `sa-ci-plan` | GitHub Actions via WIF | **Read-only**: `viewer` + `iam.securityReviewer` on the project and `objectViewer` on the state bucket, enough for `terraform plan -lock=false`. No BigQuery access (CI runs dbt on DuckDB). `apply` never runs in CI |
 
 - **No JSON keys** (D12). Without a GCP organization the key-creation policy
   cannot be enforced, so a gate checks that
@@ -464,7 +465,6 @@ See [`../SECURITY.md`](../SECURITY.md) for the reporting policy. Design rules:
 | Secret | Single home | Delivered by |
 |---|---|---|
 | vnstock API key | Secret Manager `vnstock-api-key` | On deploy, `sa-collector` reads it and writes `~collector/.vnstock/api_key.json` (mode 600). The owner enters it once |
-| Alert e-mail app password | Secret Manager | Same |
 | GCP credentials | None (D12) | Metadata server / ADC / WIF |
 | Environment values (project id, bucket names) | `config/env/prod.yml` - **git-ignored**; only `*.example.yml` is committed | Read at runtime |
 

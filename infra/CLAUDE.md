@@ -4,7 +4,7 @@ Loaded when working under `infra/`. Security design: `docs/spec.md` §14.
 
 - **Plan, then the owner applies.** Write Terraform, run `terraform fmt`,
   `validate` and `plan`, and show the plan. The owner runs `apply` locally;
-  CI only ever runs `plan` with the read-only `sa-ci`.
+  CI only ever runs `plan` with the read-only `sa-ci-plan`.
 - **Keyless.** Identities are attached service accounts, application-default
   credentials, or Workload Identity Federation - a resource that needs a JSON
   key is redesigned.
@@ -15,5 +15,7 @@ Loaded when working under `infra/`. Security design: `docs/spec.md` §14.
   `*.tfvars` / `config/env/*.yml`; commit only `*.example.*`.
 - **Deployments are tags.** `deploy.sh <tag>` checks out exactly one tag on the
   VM; rollback is the previous tag.
+- **Two stacks** (`terraform/README.md`): `bootstrap` (local state, once) and
+  `main` (remote state). Never put an environment value in a `.tf` file.
 - **Free tier first.** Before adding a resource, state its free-tier limit and
   expected cost in the PR.
