@@ -1,0 +1,9 @@
+# Data-quality tooling (P3). Thresholds of the dbt data tests themselves live in
+# dbt/dbt_project.yml vars, next to the models they read.
+
+planted_faults:
+  # One dbt step (seed, run or test) on the synthetic DuckDB warehouse of ~3,300 rows.
+  # Measured 2026-10-13 on the owner's Windows machine: 71 steps, the slowest 11.0 s (the
+  # control's first dbt call, cold start included); every run prints its slowest step. The
+  # limit, ~27x that, is a hang guard, not a performance budget.
+  dbt_step_timeout_seconds: 300

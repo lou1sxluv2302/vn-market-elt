@@ -54,6 +54,8 @@ models:
           # A price in thousands of VND, or scaled wrong, is rarely a multiple of 10. Primary
           # rows only: the fallback (VNDirect DCHART) has 1-VND resolution by design
           # (data-sources.md §5; 330 fallback rows on prod 2026-10-13, 0 primary rows).
+          # v1 checked every universe row; it had no fallback rows there. A fallback row in
+          # thousands of VND is therefore not caught here (a declared gap).
           name: price_close_multiple_of_10_vnd
           arguments:
             condition: mod(close_vnd, 10) = 0

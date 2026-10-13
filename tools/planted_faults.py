@@ -29,23 +29,32 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
 import dataclasses
 import datetime as dt
+import io
 import json
 import shutil
-import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 
-from vnmarket.common.config import REPO_ROOT, utf8_stdio
+import yaml
+
+from vnmarket.common.config import REPO_ROOT, load_config, utf8_stdio
+from vnmarket.common.process import Timeout, run_bounded
 
 DBT_DIR = REPO_ROOT / "dbt"
-DBT_TIMEOUT_SECONDS = 600  # one dbt step on a few thousand rows takes seconds
+STEP_TIMEOUT_SECONDS = load_config("dq")["planted_faults"]["dbt_step_timeout_seconds"]
 BUILTIN_TESTS = {"unique", "not_null", "accepted_values", "relationships"}
 RED = {"fail", "error", "warn"}
-PRIMARY, FALLBACK = "vnstock_quote", "vndirect_dchart"
+# The dbt project's own values, read rather than copied.
+DBT_VARS = yaml.safe_load((DBT_DIR / "dbt_project.yml").read_text("utf-8"))["vars"]
+PRIMARY, FALLBACK = DBT_VARS["primary_price_source"], DBT_VARS["fallback_price_source"]
+MIN_TRADED = DBT_VARS["min_traded_symbols_per_session"]
+SEED_TESTS = yaml.safe_load((DBT_DIR / "seeds" / "_seeds.yml").read_text("utf-8"))["seeds"]
 
 # --- the synthetic fixture ------------------------------------------------------------
 
@@ -78,7 +87,7 @@ FIXTURE_VARS = {
         {"from": "2026-02-01", "to": "2026-02-28"},
         {"from": "2026-03-01", "to": "2026-03-31"},
     ],
-    "dq_falling_market_min_symbols": 3,
+    "dq_falling_market_symbols_more_than": 3,
     "dq_fallback_rows_ceiling": 4,  # S03 x 3 (primary missing) + S04 x 1 (primary broken)
 }
 
@@ -143,6 +152,10 @@ def series(symbol: str, k: int, first: int, last: int) -> list[dict]:
     return rows
 
 
+def as_fallback(r: dict, **changes) -> dict:
+    return {**r, "_source_id": FALLBACK, "_source_file": f"{FALLBACK}.parquet", **changes}
+
+
 def at_session(rows: list[dict], symbol: str, i: int) -> dict:
     return next(r for r in rows if r["symbol"] == symbol and r["session_date"] == SESSIONS[i - 1])
 
@@ -169,23 +182,15 @@ def fixture() -> tuple[list[dict], list[dict]]:
     for i in (30, 31, 32):
         r = at_session(rows, "S03", i)
         r.update(
-            _source_id=FALLBACK,
-            _source_file=f"{FALLBACK}.parquet",
-            **{c: r[c] + 7 for c in ("open_vnd", "high_vnd", "low_vnd", "close_vnd")},
+            as_fallback(
+                r, **{c: r[c] + 7 for c in ("open_vnd", "high_vnd", "low_vnd", "close_vnd")}
+            )
         )
     for i in range(20, 25):
         r = at_session(rows, "S10", i)
-        rows.append(
-            {
-                **r,
-                "_source_id": FALLBACK,
-                "close_vnd": r["close_vnd"] + 50,
-                "high_vnd": r["high_vnd"] + 50,
-                "_source_file": f"{FALLBACK}.parquet",
-            }
-        )
+        rows.append(as_fallback(r, close_vnd=r["close_vnd"] + 50, high_vnd=r["high_vnd"] + 50))
     r = at_session(rows, "S04", 40)
-    rows.append({**r, "_source_id": FALLBACK, "_source_file": f"{FALLBACK}.parquet"})
+    rows.append(as_fallback(r))
     r.update(close_vnd=r["high_vnd"] + 50)
 
     # An older pull of one key: latest-wins must keep the newer one.
@@ -230,15 +235,40 @@ Rows = list[dict]
 
 
 @dataclasses.dataclass(frozen=True)
+class Mutant:
+    """One model's SQL changed: `old` must occur exactly `occurrences` times."""
+
+    file: str
+    old: str
+    new: str
+    occurrences: int = 1
+
+
+SeedEdit = Callable[[list[dict]], list[dict]]
+
+
+@dataclasses.dataclass(frozen=True)
 class Fault:
     name: str
     mechanism: str
     expected: dict[str, str]  # test name -> status (fail or warn)
     data: Callable[[Rows], Rows] | None = None  # change the raw rows before the build
-    mutants: tuple[tuple[str, str, str, int], ...] = ()  # (file, old, new, occurrences)
-    seed_edits: tuple[tuple[str, str, str], ...] = ()  # (seed file, old, new)
+    mutants: tuple[Mutant, ...] = ()
+    seed_edits: tuple[tuple[str, SeedEdit], ...] = ()  # (seed name, rows -> rows)
     vars: dict | None = None
     after_build: Callable[[], Rows] | None = None  # raw rows loaded after the build
+
+
+def warn(*names: str) -> dict[str, str]:
+    return dict.fromkeys(names, "warn")
+
+
+def set_column(column: str, value: str, where: Callable[[dict], bool] = lambda r: True) -> SeedEdit:
+    return lambda rows: [{**r, column: value} if where(r) else r for r in rows]
+
+
+def duplicate(where: Callable[[dict], bool]) -> SeedEdit:
+    return lambda rows: rows + [dict(r) for r in rows if where(r)]
 
 
 def fail(*names: str) -> dict[str, str]:
@@ -255,16 +285,17 @@ def edit_rows(predicate: Callable[[dict], bool], **changes) -> Callable[[Rows], 
 
 def to_fallback(symbol: str, sessions: range) -> Callable[[Rows], Rows]:
     days = {SESSIONS[i - 1] for i in sessions}
-    return edit_rows(
-        lambda r: r["symbol"] == symbol and r["session_date"] in days,
-        _source_id=FALLBACK,
-        _source_file=f"{FALLBACK}.parquet",
-    )
+    return lambda rows: [
+        as_fallback(r) if r["symbol"] == symbol and r["session_date"] in days else r for r in rows
+    ]
 
 
-def new_session_pull() -> Rows:
-    day = PARTIAL_DAY + dt.timedelta(days=1)
+def full_pull(day: dt.date) -> Rows:
     return [row(s, day, 20_000, 20_050, 19_950, 20_000, 1_000) for s in HOSE + HNX]
+
+
+def add_rows(extra: Callable[[], Rows]) -> Callable[[Rows], Rows]:
+    return lambda rows: rows + extra()
 
 
 FCT = "models/marts/daily/fct_price_daily.sql"
@@ -286,33 +317,34 @@ NOT_EMPTY = [
     "not_empty_fct_liquidity_daily_",
     "not_empty_fct_universe_daily_",
 ]
-AS_OF = [
-    f"as_of_within_days_{s}_92"
-    for s in ("tick_size", "price_band", "holidays", "exchange_alias", "exchange_changes")
-]
+# as_of tests as _seeds.yml declares them (seed name, days), named as dbt names them.
+AS_OF = {
+    seed[
+        "name"
+    ]: f"as_of_within_days_{seed['name']}_{test['as_of_within_days']['arguments']['days']}"
+    for seed in SEED_TESTS
+    for test in seed.get("data_tests", [])
+    if isinstance(test, dict) and "as_of_within_days" in test
+}
 
 FAULTS = [
     Fault(
         "empty_raw",
-        "a load that wrote nothing",
+        "a load that wrote nothing (echoes: every model below raw is empty too)",
         {
-            **fail(
-                *NOT_EMPTY,
-                "assert_last_session_has_enough_symbols",
+            **fail(*NOT_EMPTY, "assert_last_session_has_enough_symbols"),
+            **warn(
                 "assert_universe_covers_falling_markets",
                 "assert_watched_symbols_have_every_session",
-            )
+            ),
         },
         data=lambda rows: [],
     ),
     Fault(
         "stale_rule_seeds",
         "rule seeds not reviewed for a quarter",
-        fail(*AS_OF),
-        seed_edits=tuple(
-            (f"seeds/{s}.csv", ",2026-10-13,", ",2026-01-02,")
-            for s in ("tick_size", "price_band", "holidays", "exchange_alias", "exchange_changes")
-        ),
+        fail(*AS_OF.values()),
+        seed_edits=tuple((s, set_column("as_of", "2000-01-03")) for s in AS_OF),
     ),
     Fault(
         "duplicate_tick_row",
@@ -322,9 +354,8 @@ FAULTS = [
         ),
         seed_edits=(
             (
-                "seeds/tick_size.csv",
-                "\nHNX,stock,0,100,",
-                "\nHNX,stock,0,100,,,2026-10-13,documented,x\nHNX,stock,0,100,",
+                "tick_size",
+                duplicate(lambda r: r["exchange"] == "HNX" and r["instrument_class"] == "stock"),
             ),
         ),
     ),
@@ -341,9 +372,8 @@ FAULTS = [
         ),
         seed_edits=(
             (
-                "seeds/price_band.csv",
-                "HNX,normal,0.10,",
-                "HNX,normal,0.10,,,2026-10-13,documented,x\nHNX,normal,0.10,",
+                "price_band",
+                duplicate(lambda r: r["exchange"] == "HNX" and r["band_case"] == "normal"),
             ),
         ),
     ),
@@ -354,13 +384,7 @@ FAULTS = [
             "unique_combination_exchange_changes_from_exchange__effective_from",
             "unique_combination_dim_security_symbol__effective_from",
         ),
-        seed_edits=(
-            (
-                "seeds/exchange_changes.csv",
-                "HNX,HOSE,",
-                "HNX,HOSE,2026-03-02,,every_listed_stock,announced,2026-10-13,x\nHNX,HOSE,",
-            ),
-        ),
+        seed_edits=(("exchange_changes", duplicate(lambda r: r["from_exchange"] == "HNX")),),
     ),
     Fault(
         "next_year_holidays_missing",
@@ -372,15 +396,46 @@ FAULTS = [
         "older_pull_kept",
         "latest-wins filter lost in staging",
         fail("unique_combination_stg_vnstock__ohlcv_daily__source_id__symbol__trade_date"),
-        mutants=((STG, "where pull_rank = 1", "where pull_rank >= 1", 1),),
+        mutants=(Mutant(STG, "where pull_rank = 1", "where pull_rank >= 1", 1),),
     ),
-    Fault("both_sources_kept", "source choice keeps every source's row", {}),  # set below
-    Fault("delisted_split_by_move", "a market-wide move applied to delisted symbols", {}),
+    # Defects dbt carries downstream: the echoes are named, each one explained.
+    Fault(
+        "both_sources_kept",
+        "source choice keeps every source's row (echoes: the flagged "
+        "grain and the fallback rows let through; fct_price_daily's tick rank keeps one row "
+        "per key, so the marts' grains stay green)",
+        fail(
+            "unique_combination_int_prices__chosen_source_symbol__trade_date",
+            "unique_combination_int_prices__flagged_symbol__trade_date",
+            "assert_fallback_only_without_clean_primary",
+        ),
+        mutants=(Mutant(CHOSEN, "where source_rank = 1", "where source_rank >= 1"),),
+    ),
+    Fault(
+        "delisted_split_by_move",
+        "the move splits delisted symbols too (the price rows "
+        "joining both periods are cut back to one by the tick rank)",
+        fail("unique_combination_dim_security_symbol__effective_from"),
+        mutants=(
+            Mutant(
+                SEC,
+                "join moves as m on m.from_exchange = c.exchange and not c.is_delisted",
+                "join moves as m on m.from_exchange = c.exchange",
+                2,
+            ),
+        ),
+    ),
+    Fault(
+        "full_pull_on_a_saturday",
+        "a source dates a full session on a Saturday",
+        fail("assert_no_session_on_weekend"),
+        data=add_rows(lambda: full_pull(SATURDAY + dt.timedelta(days=7))),
+    ),
     Fault(
         "nonpositive_close_kept",
         "the non-positive drop rule lost",
         fail("price_close_positive"),
-        mutants=((FCT, "and not p.is_bad_nonpositive", "", 1),),
+        mutants=(Mutant(FCT, "and not p.is_bad_nonpositive", "", 1),),
     ),
     Fault(
         "null_close_kept",
@@ -389,27 +444,27 @@ FAULTS = [
         # A null close makes the non-positive and OHLC flags null too, and each drops the
         # row on its own; the regression is a rewrite that reads unknown as clean.
         mutants=(
-            (FCT, "where not p.is_bad_null", "where true", 1),
-            (
+            Mutant(FCT, "where not p.is_bad_null", "where true", 1),
+            Mutant(
                 FCT,
                 "and not p.is_bad_nonpositive",
                 "and coalesce(not p.is_bad_nonpositive, true)",
                 1,
             ),
-            (FCT, "and not p.is_bad_ohlc", "and coalesce(not p.is_bad_ohlc, true)", 1),
+            Mutant(FCT, "and not p.is_bad_ohlc", "and coalesce(not p.is_bad_ohlc, true)", 1),
         ),
     ),
     Fault(
         "close_outside_range_kept",
         "the OHLC drop rule lost",
         fail("price_close_within_low_high"),
-        mutants=((FCT, "and not p.is_bad_ohlc", "", 1),),
+        mutants=(Mutant(FCT, "and not p.is_bad_ohlc", "", 1),),
     ),
     Fault(
         "open_outside_range_kept",
         "v1's open drop rule lost",
         fail("price_open_within_low_high"),
-        mutants=((FCT, "and not (p.is_stale = false and p.is_open_outside_range)", "", 1),),
+        mutants=(Mutant(FCT, "and not (p.is_stale = false and p.is_open_outside_range)", "", 1),),
     ),
     Fault(
         "negative_volume",
@@ -436,7 +491,7 @@ FAULTS = [
         "the calendar joined without is_trading_day",
         fail("assert_price_dates_are_trading_days"),
         mutants=(
-            (
+            Mutant(
                 FCT,
                 "on c.calendar_date = p.trade_date and c.is_trading_day",
                 "on c.calendar_date = p.trade_date",
@@ -449,7 +504,7 @@ FAULTS = [
         "session_seq counted per symbol",
         fail("assert_price_session_seq_matches_calendar"),
         mutants=(
-            (
+            Mutant(
                 FCT,
                 "p.is_stale, p._source_id, c.session_seq, c.trading_week_id",
                 "p.is_stale, p._source_id, row_number() over (partition by p.symbol order by "
@@ -463,7 +518,7 @@ FAULTS = [
         "ADV window one row wider than configured",
         fail("assert_adv_rows_within_window"),
         mutants=(
-            (
+            Mutant(
                 LIQ,
                 "rows between {{ var('adv_window_rows') }} preceding and 1 preceding",
                 "rows between {{ var('adv_window_rows') + 1 }} preceding and 1 preceding",
@@ -476,7 +531,7 @@ FAULTS = [
         "ADV window shifted onto the current row",
         fail("assert_adv_excludes_current_row"),
         mutants=(
-            (
+            Mutant(
                 LIQ,
                 "rows between {{ var('adv_window_rows') }} preceding and 1 preceding",
                 "rows between {{ var('adv_window_rows') - 1 }} preceding and current row",
@@ -489,14 +544,14 @@ FAULTS = [
         "both stale guards lost",
         fail("assert_no_stale_row_in_universe"),
         mutants=(
-            (LIQ, "where is_stale = false", "where true", 1),
-            (UNI, "    and p.is_stale = false\n", "", 1),
+            Mutant(LIQ, "where is_stale = false", "where true", 1),
+            Mutant(UNI, "    and p.is_stale = false\n", "", 1),
         ),
     ),
     Fault(
         "watched_symbol_month_missing",
         "a source cut a month of a liquid symbol",
-        fail("assert_watched_symbols_have_every_session"),
+        warn("assert_watched_symbols_have_every_session"),
         data=drop_rows(
             lambda r: r["symbol"] == "S02" and r["session_date"] in set(SESSIONS[29:49])
         ),
@@ -505,20 +560,20 @@ FAULTS = [
         "raw_loaded_without_rebuild",
         "raw advanced, dbt not rerun (v1 2026-08-03)",
         fail("assert_marts_not_behind_raw"),
-        after_build=new_session_pull,
+        after_build=lambda: full_pull(PARTIAL_DAY + dt.timedelta(days=1)),
     ),
     Fault(
         "partial_tail_kept",
         "the cut after the last observed session lost",
         fail("assert_last_session_has_enough_symbols"),
-        mutants=((FCT, "and p.trade_date <= lo.last_session", "", 1),),
+        mutants=(Mutant(FCT, "and p.trade_date <= lo.last_session", "", 1),),
     ),
     Fault(
         "current_exchange_for_every_date",
         "the security join ignores effective dates",
         fail("assert_price_exchange_matches_security_period"),
         mutants=(
-            (
+            Mutant(
                 FCT,
                 "and (s.effective_from is null or k.trade_date >= s.effective_from)\n"
                 "        and (s.effective_to is null or k.trade_date < s.effective_to)",
@@ -532,7 +587,7 @@ FAULTS = [
         "tick inference preferred over the list",
         fail("assert_listed_exchange_from_symbol_list"),
         mutants=(
-            (
+            Mutant(
                 SEC,
                 "coalesce(l.exchange, i.inferred_exchange) as exchange",
                 "coalesce(i.inferred_exchange, l.exchange) as exchange",
@@ -545,7 +600,7 @@ FAULTS = [
         "the fallback wins over a clean primary row",
         fail("assert_fallback_only_without_clean_primary"),
         mutants=(
-            (
+            Mutant(
                 CHOSEN,
                 """case when _source_id = '{{ var("primary_price_source") }}' then 0 else 1 end""",
                 """case when _source_id = '{{ var("primary_price_source") }}' then 1 else 0 end""",
@@ -564,7 +619,7 @@ FAULTS = [
         "session_seq counted over calendar days",
         fail("assert_calendar_session_seq_has_no_gap"),
         mutants=(
-            (
+            Mutant(
                 CAL,
                 "sum(case when is_trading_day then 1 else 0 end)\n            over (order by "
                 "calendar_date rows between unbounded preceding and current row)",
@@ -578,7 +633,7 @@ FAULTS = [
         "the weekday rule without the holiday seed (v1 2027)",
         fail("assert_no_session_on_seeded_holiday"),
         mutants=(
-            (
+            Mutant(
                 CAL,
                 "else {{ is_weekday('s.calendar_date') }} and h.holiday_date is null",
                 "else {{ is_weekday('s.calendar_date') }}",
@@ -596,14 +651,14 @@ FAULTS = [
             "not_empty_fct_liquidity_daily_",
             "not_empty_fct_universe_daily_",
             "assert_last_session_has_enough_symbols",
-            "assert_universe_covers_falling_markets",
-        ),
+        )
+        | warn("assert_universe_covers_falling_markets"),
         vars={"calendar_first_date": "2027-12-31", "calendar_last_date": "2005-01-01"},
     ),
     Fault(
         "tier_thresholds_in_wrong_unit",
         "liquidity tiers entered in VND x 1,000",
-        fail("assert_universe_covers_falling_markets"),
+        warn("assert_universe_covers_falling_markets"),
         vars={
             "liquidity_tier_high_vnd": 10**14,
             "liquidity_tier_medium_vnd": 3 * 10**13,
@@ -611,36 +666,6 @@ FAULTS = [
         },
     ),
 ]
-# Faults whose defect dbt carries downstream: the echoes are named, each one explained.
-_echoes = {
-    "both_sources_kept": Fault(
-        "both_sources_kept",
-        "source choice keeps every source's row (echoes: the flagged "
-        "grain and the fallback rows let through; fct_price_daily's tick rank keeps one row "
-        "per key, so the marts' grains stay green)",
-        fail(
-            "unique_combination_int_prices__chosen_source_symbol__trade_date",
-            "unique_combination_int_prices__flagged_symbol__trade_date",
-            "assert_fallback_only_without_clean_primary",
-        ),
-        mutants=((CHOSEN, "where source_rank = 1", "where source_rank >= 1", 1),),
-    ),
-    "delisted_split_by_move": Fault(
-        "delisted_split_by_move",
-        "the move splits delisted symbols too (the price rows "
-        "joining both periods are cut back to one by the tick rank)",
-        fail("unique_combination_dim_security_symbol__effective_from"),
-        mutants=(
-            (
-                SEC,
-                "join moves as m on m.from_exchange = c.exchange and not c.is_delisted",
-                "join moves as m on m.from_exchange = c.exchange",
-                2,
-            ),
-        ),
-    ),
-}
-FAULTS = [_echoes.get(f.name, f) for f in FAULTS]
 
 
 # --- comparison (pure, self-tested) --------------------------------------------------
@@ -695,7 +720,10 @@ def dbt_executable() -> str:
     return found
 
 
-def dbt(project: Path, *args: str, vars_: dict | None = None) -> dict:
+STEP_SECONDS: list[float] = []  # every dbt step's duration, reported at the end
+
+
+def dbt_argv(project: Path, args: tuple[str, ...], vars_: dict | None) -> list[str]:
     argv = [
         dbt_executable(),
         *args,
@@ -709,30 +737,41 @@ def dbt(project: Path, *args: str, vars_: dict | None = None) -> dict:
     ]
     if vars_:
         argv += ["--vars", json.dumps(vars_)]
+    return argv
+
+
+def invoke(project: Path, args: tuple[str, ...], vars_: dict | None, allowed: tuple[int, ...]):
+    started = time.monotonic()
     try:
-        done = subprocess.run(  # noqa: S603 - dbt from this environment, fixed arguments
-            argv,
-            cwd=project,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=DBT_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise CannotRun(f"dbt {args[0]} timed out after {DBT_TIMEOUT_SECONDS}s") from exc
-    results = project / "target" / "run_results.json"
-    # dbt test exits 1 when a test fails (expected for a fault); any other step must exit 0.
-    allowed = (0, 1) if args[0] == "test" else (0,)
-    if done.returncode not in allowed or (args[0] == "test" and not results.exists()):
+        done = run_bounded(dbt_argv(project, args, vars_), STEP_TIMEOUT_SECONDS, cwd=project)
+    except Timeout as exc:
+        raise CannotRun(f"dbt {args[0]}: {exc}") from exc
+    STEP_SECONDS.append(time.monotonic() - started)
+    if done.returncode not in allowed:
         raise CannotRun(f"dbt {' '.join(args)} exited {done.returncode}:\n{done.stdout[-3000:]}")
-    if args[0] != "test":
-        return {}
+
+
+def dbt_step(project: Path, *args: str, vars_: dict | None = None) -> None:
+    """A dbt step that must succeed (seed, run, run-operation)."""
+    invoke(project, args, vars_, allowed=(0,))
+
+
+def dbt_test(project: Path, vars_: dict) -> dict:
+    """Run the data tests; exit 1 (a red test) is expected for a fault. The previous
+    run_results.json is removed first, so a crash cannot be read as the last run's result."""
+    results = project / "target" / "run_results.json"
+    results.unlink(missing_ok=True)
+    invoke(project, ("test", "--exclude", "test_type:unit"), vars_, allowed=(0, 1))
+    if not results.exists():
+        raise CannotRun("dbt test wrote no run_results.json")
     run = json.loads(results.read_text("utf-8"))
-    skipped = [r["unique_id"] for r in run["results"] if r["status"] == "skipped"]
-    if skipped:  # a skipped test would read as passed
+    if skipped := skipped_tests(run):  # a skipped test would read as passed
         raise CannotRun(f"dbt skipped {len(skipped)} tests, e.g. {skipped[0]}")
     return run
+
+
+def skipped_tests(run_results: dict) -> list[str]:
+    return [r["unique_id"] for r in run_results["results"] if r["status"] == "skipped"]
 
 
 def sql_value(v) -> str:
@@ -775,21 +814,37 @@ def copy_project(target: Path) -> Path:
         }
 
     shutil.copytree(DBT_DIR, target, ignore=skipped)
-    edit(
-        target / "seeds" / "exchange_changes.csv", "HNX,HOSE,2026-12-28,", f"HNX,HOSE,{MOVE_DATE},"
+    edit_seed(
+        target,
+        "exchange_changes",
+        set_column("effective_from", MOVE_DATE, lambda r: r["from_exchange"] == "HNX"),
     )
     return target
 
 
-def edit(path: Path, old: str, new: str, occurrences: int | None = 1) -> None:
-    """Replace `old` exactly `occurrences` times (None: every occurrence, at least one); a
-    mutation that no longer applies stops the run instead of passing silently."""
+def mutate(project: Path, m: Mutant) -> None:
+    """Apply a mutant; one that no longer applies stops the run instead of passing silently."""
+    path = project / m.file
     text = path.read_text("utf-8")
-    if (text.count(old) != occurrences) if occurrences else not text.count(old):
+    if text.count(m.old) != m.occurrences:
         raise CannotRun(
-            f"{path.name}: expected {occurrences} x {old[:60]!r}, found {text.count(old)}"
+            f"{m.file}: expected {m.occurrences} x {m.old[:60]!r}, found {text.count(m.old)}"
         )
-    path.write_text(text.replace(old, new), "utf-8", newline="\n")
+    path.write_text(text.replace(m.old, m.new), "utf-8", newline="\n")
+
+
+def edit_seed(project: Path, seed: str, change: SeedEdit) -> None:
+    """Rewrite a seed CSV through `change`; an edit that changes nothing stops the run."""
+    path = project / "seeds" / f"{seed}.csv"
+    rows = list(csv.DictReader(io.StringIO(path.read_text("utf-8"))))
+    changed = change(rows)
+    if changed == rows:
+        raise CannotRun(f"seed edit on {seed} changed nothing")
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=list(rows[0]), lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(changed)
+    path.write_text(out.getvalue(), "utf-8", newline="\n")
 
 
 def run_matrix(only: set[str], keep: Path | None) -> int:
@@ -798,13 +853,13 @@ def run_matrix(only: set[str], keep: Path | None) -> int:
         control = copy_project(work / "control")
         db = control / "target" / "ci.duckdb"
         db.parent.mkdir(parents=True, exist_ok=True)
-        dbt(control, "run-operation", "create_ci_sources")
+        dbt_step(control, "run-operation", "create_ci_sources")
         rows, symbols = fixture()
         load(db, "ohlcv_daily", rows, replace=True)
         load(db, "ref_symbols_by_exchange", symbols, replace=True)
-        dbt(control, "seed", vars_=FIXTURE_VARS)
-        dbt(control, "run", vars_=FIXTURE_VARS)
-        results = dbt(control, "test", "--exclude", "test_type:unit", vars_=FIXTURE_VARS)
+        dbt_step(control, "seed", vars_=FIXTURE_VARS)
+        dbt_step(control, "run", vars_=FIXTURE_VARS)
+        results = dbt_test(control, FIXTURE_VARS)
         manifest = json.loads((control / "target" / "manifest.json").read_text("utf-8"))
         names = {uid: node["name"] for uid, node in manifest["nodes"].items()}
         tests = data_tests_of(manifest)
@@ -822,21 +877,21 @@ def run_matrix(only: set[str], keep: Path | None) -> int:
             if only and fault.name not in only:
                 continue
             project = shutil.copytree(control, work / fault.name)
-            for file, old, new, n in fault.mutants:
-                edit(project / file, old, new, n)
-            for file, old, new in fault.seed_edits:
-                edit(project / file, old, new, None)
+            for m in fault.mutants:
+                mutate(project, m)
+            for seed, change in fault.seed_edits:
+                edit_seed(project, seed, change)
             vars_ = {**FIXTURE_VARS, **(fault.vars or {})}
             fault_db = project / "target" / "ci.duckdb"
             if fault.data:
                 load(fault_db, "ohlcv_daily", fault.data(fixture()[0]), replace=True)
             if fault.seed_edits:
-                dbt(project, "seed", vars_=vars_)
+                dbt_step(project, "seed", vars_=vars_)
             if fault.after_build:
                 load(fault_db, "ohlcv_daily", fault.after_build(), replace=False)
             else:
-                dbt(project, "run", vars_=vars_)
-            res = dbt(project, "test", "--exclude", "test_type:unit", vars_=vars_)
+                dbt_step(project, "run", vars_=vars_)
+            res = dbt_test(project, vars_)
             problems = problems_for(fault, red_tests(res, names))
             print(f"{'✅' if not problems else '🔴'} {fault.name}: {fault.mechanism}")
             for p in problems:
@@ -858,6 +913,10 @@ def run_matrix(only: set[str], keep: Path | None) -> int:
             if unknown:
                 print(f"🔴 faults name tests that do not exist: {', '.join(unknown)}")
                 failures.append("unknown tests")
+        print(
+            f"   {len(STEP_SECONDS)} dbt steps, slowest {max(STEP_SECONDS):.1f}s "
+            f"(limit {STEP_TIMEOUT_SECONDS}s, config/dq.yml)"
+        )
         return 1 if failures else 0
     finally:
         if keep is None:
@@ -865,6 +924,21 @@ def run_matrix(only: set[str], keep: Path | None) -> int:
 
 
 # --- self-test -----------------------------------------------------------------------
+
+
+def raises_cannot_run(action: Callable[[], object]) -> bool:
+    try:
+        action()
+    except CannotRun:
+        return True
+    return False
+
+
+def seed_edit_rejected() -> bool:
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "seeds").mkdir()
+        (Path(tmp) / "seeds" / "s.csv").write_text("a,b\n1,2\n", "utf-8")
+        return raises_cannot_run(lambda: edit_seed(Path(tmp), "s", lambda rows: rows))
 
 
 def self_test() -> int:
@@ -902,12 +976,21 @@ def self_test() -> int:
             {"a": "singular", "u": "unique", "z": "row_condition"}, [exact]
         )
         == ["z"],
-        "fixture: every session has >= 30 traded symbols on the primary": all(
-            len(traded.get(d, ())) >= 30 for d in SESSIONS
+        "fixture: every session has enough traded symbols on the primary": all(
+            len(traded.get(d, ())) >= MIN_TRADED for d in SESSIONS
         ),
-        "fixture: the Saturday and the partial day stay below 30": all(
-            len(traded.get(d, ())) < 30 for d in (SATURDAY, PARTIAL_DAY)
+        "fixture: the Saturday and the partial day stay below that": all(
+            len(traded.get(d, ())) < MIN_TRADED for d in (SATURDAY, PARTIAL_DAY)
         ),
+        "planted: a mutant that no longer applies stops the run": raises_cannot_run(
+            lambda: mutate(REPO_ROOT, Mutant("dbt/dbt_project.yml", "no such text", "x"))
+        ),
+        "planted: a seed edit that changes nothing stops the run": seed_edit_rejected(),
+        "planted: a skipped test is detected (it would read as passed)": skipped_tests(
+            {"results": [{"unique_id": "test.p.s", "status": "skipped"}]}
+        )
+        == ["test.p.s"],
+        "faults: every as_of seed test is known": len(AS_OF) >= 5,
         "fixture: deterministic": fixture() == (rows, symbols),
         "fixture: every regular price is on its tick": all(
             r["close_vnd"] % base_and_tick(r["symbol"])[1] == 0
@@ -919,8 +1002,8 @@ def self_test() -> int:
         ),
         "faults: names unique": len({f.name for f in FAULTS}) == len(FAULTS),
         "faults: every fault expects at least one red test": all(f.expected for f in FAULTS),
-        "an unknown argument is rejected with exit 2": subprocess.run(  # noqa: S603
-            [sys.executable, __file__, "--bogus"], capture_output=True, timeout=120
+        "an unknown argument is rejected with exit 2": run_bounded(
+            [sys.executable, __file__, "--bogus"], 120
         ).returncode
         == 2,
     }

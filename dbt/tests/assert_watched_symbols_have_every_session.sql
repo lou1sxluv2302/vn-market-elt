@@ -1,6 +1,10 @@
 -- v1 dq 18. Each watched symbol misses at most `dq_watched_max_missing_sessions` sessions of
 -- the watched window (symbols and window: dbt_project.yml, v1's choices).
 -- Fails on: a pull that lost part of a liquid symbol's history (a month cut by the source).
+-- v1 also failed on surplus rows (an absolute difference); a surplus row is a row on a
+-- non-session, which assert_price_dates_are_trading_days checks. A warning: the window is
+-- history, and a rerun cannot bring back sessions a source no longer serves.
+{{ config(severity='warn') }}
 with expected as (
     select count(*) as n
     from {{ ref('dim_trading_calendar') }}

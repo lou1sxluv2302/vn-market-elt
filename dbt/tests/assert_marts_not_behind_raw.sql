@@ -3,6 +3,9 @@
 -- `min_traded_symbols_per_session` traded symbols is in fct_price_daily, unless it is a
 -- known bad date. Staging is a view, so it sees raw rows the marts were not rebuilt for.
 -- Fails on: raw loaded after the last dbt build.
+-- Narrower than v1 dq 19, which counted bronze dates over every source: here the primary
+-- source alone, inside the calendar's range, so a fallback-only date or a date the calendar
+-- does not span is not checked.
 with traded as (
     select trade_date, count(distinct symbol) as traded_symbols
     from {{ ref('stg_vnstock__ohlcv_daily') }}

@@ -10,7 +10,7 @@
    instance (data-quality-lessons §28). A null result passes: nulls are not_null's job,
    so one null does not turn several tests red. #}
 {% test row_condition(model, condition) %}
-    select *
+    select 1 as broken_row
     from {{ model }}
     where not ({{ condition }})
 {% endtest %}

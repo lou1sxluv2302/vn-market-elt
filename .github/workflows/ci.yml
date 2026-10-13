@@ -58,7 +58,7 @@ jobs:
   dbt-test:
     name: dbt-test
     runs-on: ubuntu-24.04
-    timeout-minutes: 25 # the planted-fault matrix builds the project ~30 times
+    timeout-minutes: 25 # fault matrix: 71 dbt steps, ~8 min measured locally 2026-10-13
     defaults:
       run:
         working-directory: dbt

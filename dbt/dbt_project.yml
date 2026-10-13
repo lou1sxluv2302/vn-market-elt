@@ -56,7 +56,7 @@ vars:
     - {from: "2018-01-01", to: "2018-12-31"}
     - {from: "2020-01-01", to: "2020-03-31"}
     - {from: "2022-01-01", to: "2022-12-31"}
-  dq_falling_market_min_symbols: 50
+  dq_falling_market_symbols_more_than: 50
   # Non-stale fallback rows of symbols ever in the universe: 151 rows of 40 symbols,
   # measured on prod marts 2026-10-13 (data to 2026-10-13). v1 measured 0 under its own
   # source rule; v2's clean-row rule (ADR-0028 decision 7) puts some there by design.
