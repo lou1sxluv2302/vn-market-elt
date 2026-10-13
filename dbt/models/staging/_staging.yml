@@ -8,7 +8,8 @@ models:
         description: Matched board-lot quantity (v1 `volume`).
     data_tests:
       - unique_combination:
-          columns: [_source_id, symbol, trade_date]
+          arguments:
+            columns: [_source_id, symbol, trade_date]
 
   - name: stg_vnstock__symbols
     description: Newest symbol list; exchange normalised; delisted symbols have no exchange.

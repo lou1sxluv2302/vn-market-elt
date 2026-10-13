@@ -5,13 +5,15 @@ models:
     description: One row per (symbol, trade_date); the primary source first.
     data_tests:
       - unique_combination:
-          columns: [symbol, trade_date]
+          arguments:
+            columns: [symbol, trade_date]
 
   - name: int_prices__flagged
     description: Price rows with is_stale and v1's bad-row flags.
     data_tests:
       - unique_combination:
-          columns: [symbol, trade_date]
+          arguments:
+            columns: [symbol, trade_date]
 
 unit_tests:
   - name: primary_source_wins_when_its_name_sorts_last

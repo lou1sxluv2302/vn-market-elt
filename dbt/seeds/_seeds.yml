@@ -21,9 +21,11 @@ seeds:
         data_tests: [not_null]
     data_tests:
       - unique_combination:
-          columns: [exchange, instrument_class, price_from_vnd, effective_from]
+          arguments:
+            columns: [exchange, instrument_class, price_from_vnd, effective_from]
       - as_of_within_days:
-          days: 92
+          arguments:
+            days: 92
 
   - name: price_band
     description: Daily price band (fraction of the reference price) by exchange and case.
@@ -41,9 +43,11 @@ seeds:
                 values: [normal, first_trading_day, resume_after_25d, ex_stock_dividend]
     data_tests:
       - unique_combination:
-          columns: [exchange, band_case, effective_from]
+          arguments:
+            columns: [exchange, band_case, effective_from]
       - as_of_within_days:
-          days: 92
+          arguments:
+            days: 92
 
   - name: holidays
     description: >
@@ -64,7 +68,8 @@ seeds:
                 values: [announced, provisional, confirmed]
     data_tests:
       - as_of_within_days:
-          days: 92
+          arguments:
+            days: 92
 
   - name: exchange_alias
     description: Source spellings of an exchange; DELISTED maps to no exchange.
@@ -79,7 +84,8 @@ seeds:
         data_tests: [unique, not_null]
     data_tests:
       - as_of_within_days:
-          days: 92
+          arguments:
+            days: 92
 
   - name: exchange_changes
     description: Announced exchange moves applying to every listed stock (HNX to HOSE).
@@ -90,9 +96,11 @@ seeds:
         as_of: date
     data_tests:
       - unique_combination:
-          columns: [from_exchange, effective_from]
+          arguments:
+            columns: [from_exchange, effective_from]
       - as_of_within_days:
-          days: 92
+          arguments:
+            days: 92
 
   - name: known_bad_dates
     description: Dates whose price rows are dropped as a whole (a dated fact, so no effective period).
