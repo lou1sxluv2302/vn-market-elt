@@ -1,6 +1,6 @@
 -- One row per (symbol, trade_date): the primary source's latest pull, the fallback's only
 -- where the primary has none. (v1 instead kept whichever source it fetched that day; the
--- difference is counted by tools/reconcile_v1.py --scope marts.)
+-- difference is counted by tools/reconcile_v1_marts.py.)
 with ranked as (
     select
         *,

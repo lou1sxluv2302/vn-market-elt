@@ -318,6 +318,8 @@ Seed tests: a seed fails when `as_of` is older than one quarter, or when next ye
 | 17 | VPS feed field names for reference/ceiling/floor, session phase, put-through and odd lots | Parsing (S0) |
 | 18 | FTSE tranche schedule: "3-5 tranches to 2027-09" (v1 01 L334) vs "4 tranches 10/20/35/35%" (v1 kpi L16); did 2026-09-21 take effect? | Event dating only |
 | 19 | Restricted-sector default cap: 50% (v1 yml L123) vs "0/30/49/100%" (v1 kpi L16) | `foreign_ownership_limit_ratio` |
+| 20 | Listing and delisting dates: the vendor has listing dates for 739 of ~1,550 symbols and no delisting dates; P2 uses "has traded" instead of a point-in-time listing filter (ADR-0028) | Universe on dates a symbol was not yet or no longer listed |
+| 21 | Sessions before 2006-07-07: too few symbols for the ≥ 30 rule, so weekdays stand in from 2005-01-01, as v1 | `session_seq` and prices of 2005-2006 |
 
 Close #1-#8 from the exchanges' rulebooks (PDFs on hose.vn/hnx.vn; the sites are JavaScript apps and need a browser). (v1 01 L461)
 

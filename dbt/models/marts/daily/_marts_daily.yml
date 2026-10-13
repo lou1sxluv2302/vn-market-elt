@@ -10,7 +10,12 @@ models:
         data_tests: [unique]
 
   - name: dim_security
-    description: Symbol and exchange per effective period (SCD2).
+    description: >
+      Symbol and exchange per effective period (SCD2). Known gap: no listing or delisting
+      dates (ADR-0028).
+    columns:
+      - name: symbol
+        data_tests: [not_null]
     data_tests:
       - unique_combination:
           arguments:
@@ -23,6 +28,8 @@ models:
           arguments:
             columns: [symbol, trade_date]
     columns:
+      - name: symbol
+        data_tests: [not_null]
       - name: session_seq
         data_tests: [not_null]
 
@@ -33,6 +40,8 @@ models:
           arguments:
             columns: [symbol, trade_date]
     columns:
+      - name: symbol
+        data_tests: [not_null]
       - name: liquidity_tier
         data_tests:
           - accepted_values:
@@ -46,6 +55,8 @@ models:
           arguments:
             columns: [symbol, trade_date]
     columns:
+      - name: symbol
+        data_tests: [not_null]
       - name: is_in_universe
         data_tests: [not_null]
 
@@ -86,6 +97,32 @@ unit_tests:
         - {calendar_date: 2026-11-24, is_trading_day: false, calendar_source: rule, session_seq: null}
         - {calendar_date: 2026-11-25, is_trading_day: true, calendar_source: rule, session_seq: 3}
 
+  - name: calendar_year_end_keys
+    description: >
+      Across a year end with a holiday: the last session of December closes the month
+      and the quarter, ISO weeks stay in the old ISO year, sessions are counted per month.
+    model: dim_trading_calendar
+    overrides:
+      vars:
+        min_traded_symbols_per_session: 99
+        calendar_first_date: "2026-12-30"
+        calendar_last_date: "2027-01-04"
+    given:
+      - input: ref('int_prices__flagged')
+        rows:
+          - {symbol: A, trade_date: 2026-12-30, match_qty: 1}
+      - input: ref('holidays')
+        rows:
+          - {holiday_date: 2027-01-01, status: provisional, occasion: new_year}
+    expect:
+      rows:
+        - {calendar_date: 2026-12-30, is_trading_day: true, trading_week_id: 202653, is_month_end_session: false, is_quarter_end_session: false, month_session_count: 2}
+        - {calendar_date: 2026-12-31, is_trading_day: true, trading_week_id: 202653, is_month_end_session: true, is_quarter_end_session: true, month_session_count: 2}
+        - {calendar_date: 2027-01-01, is_trading_day: false, trading_week_id: 202653, is_month_end_session: false, is_quarter_end_session: false, month_session_count: 1}
+        - {calendar_date: 2027-01-02, is_trading_day: false, trading_week_id: 202653, is_month_end_session: false, is_quarter_end_session: false, month_session_count: 1}
+        - {calendar_date: 2027-01-03, is_trading_day: false, trading_week_id: 202653, is_month_end_session: false, is_quarter_end_session: false, month_session_count: 1}
+        - {calendar_date: 2027-01-04, is_trading_day: true, trading_week_id: 202701, is_month_end_session: true, is_quarter_end_session: true, month_session_count: 1}
+
   - name: delisted_exchange_inferred_and_announced_move_splits
     description: >
       A listed HNX stock gets two periods split at the move date; a delisted symbol takes
@@ -103,6 +140,8 @@ unit_tests:
           - {symbol: DEAD, close_vnd: 9200}
           - {symbol: HOSEA, close_vnd: 9010}
           - {symbol: THIN, close_vnd: 9300}
+          - {symbol: GONE, close_vnd: 9400}
+          - {symbol: GONE, close_vnd: 9500}
       - input: ref('stg_vnstock__symbols')
         rows:
           - {symbol: HNXA, exchange: HNX, is_delisted: false, instrument_type: STOCK}
@@ -111,7 +150,7 @@ unit_tests:
           - {symbol: THIN, exchange: null, is_delisted: true, instrument_type: STOCK}
       - input: ref('exchange_changes')
         rows:
-          - {from_exchange: HNX, to_exchange: HOSE, effective_from: 2026-12-28, effective_to: null}
+          - {from_exchange: HNX, to_exchange: HOSE, effective_from: 2026-12-28, effective_to: null, applies_to: every_listed_stock}
       - input: ref('exchange_alias')
         rows:
           - {source_value: HOSE, is_in_scope: true}
@@ -123,6 +162,7 @@ unit_tests:
         - {symbol: DEAD, exchange: HNX, effective_from: null, effective_to: null, exchange_is_inferred: true}
         - {symbol: HOSEA, exchange: HOSE, effective_from: null, effective_to: null, exchange_is_inferred: false}
         - {symbol: THIN, exchange: null, effective_from: null, effective_to: null, exchange_is_inferred: false}
+        - {symbol: GONE, exchange: HNX, effective_from: null, effective_to: null, exchange_is_inferred: true}
 
   - name: price_rows_dropped_as_v1
     description: >
@@ -137,6 +177,7 @@ unit_tests:
           - {symbol: OK, trade_date: 2026-12-28, open_vnd: 10000, high_vnd: 10200, low_vnd: 9900, close_vnd: 10100, match_qty: 0, is_stale: true, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: false}
           - {symbol: BADOPEN, trade_date: 2026-12-24, open_vnd: 20000, high_vnd: 10200, low_vnd: 9900, close_vnd: 10100, match_qty: 5, is_stale: false, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: true}
           - {symbol: NULLSTALE, trade_date: 2026-12-24, open_vnd: 20000, high_vnd: 10200, low_vnd: 9900, close_vnd: 10100, match_qty: 0, is_stale: null, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: true}
+          - {symbol: NULLOK, trade_date: 2026-12-24, open_vnd: 10000, high_vnd: 10200, low_vnd: 9900, close_vnd: 10100, match_qty: 0, is_stale: null, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: false}
           - {symbol: WEEKEND, trade_date: 2026-12-26, open_vnd: 10000, high_vnd: 10200, low_vnd: 9900, close_vnd: 10100, match_qty: 5, is_stale: false, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: false}
           - {symbol: LATE, trade_date: 2026-12-29, open_vnd: 10000, high_vnd: 10200, low_vnd: 9900, close_vnd: 10100, match_qty: 5, is_stale: false, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: false}
       - input: ref('dim_trading_calendar')
@@ -149,6 +190,7 @@ unit_tests:
         rows:
           - {symbol: OK, exchange: HNX, is_in_scope: true, effective_from: null, effective_to: 2026-12-28}
           - {symbol: OK, exchange: HOSE, is_in_scope: true, effective_from: 2026-12-28, effective_to: null}
+          - {symbol: NULLOK, exchange: HOSE, is_in_scope: true, effective_from: null, effective_to: null}
       - input: ref('tick_size')
         rows:
           - {exchange: HNX, instrument_class: stock, price_from_vnd: 0, tick_vnd: 100}
@@ -160,8 +202,9 @@ unit_tests:
           - {exchange: HOSE, band_case: normal, band_ratio: 0.07}
     expect:
       rows:
-        - {symbol: OK, trade_date: 2026-12-24, exchange: HNX, open_vnd: 10000, low_vnd: 9900, tick_vnd: 100, session_seq: 1}
-        - {symbol: OK, trade_date: 2026-12-28, exchange: HOSE, open_vnd: 10100, low_vnd: 10100, tick_vnd: 50, session_seq: 2}
+        - {symbol: OK, trade_date: 2026-12-24, exchange: HNX, open_vnd: 10000, low_vnd: 9900, tick_vnd: 100, price_band_ratio: 0.10, session_seq: 1}
+        - {symbol: OK, trade_date: 2026-12-28, exchange: HOSE, open_vnd: 10100, low_vnd: 10100, tick_vnd: 50, price_band_ratio: 0.07, session_seq: 2}
+        - {symbol: NULLOK, trade_date: 2026-12-24, exchange: HOSE, open_vnd: 10000, low_vnd: 9900, tick_vnd: 50, price_band_ratio: 0.07, session_seq: 1}
 
   - name: adv_uses_previous_non_stale_rows_only
     description: >

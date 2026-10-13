@@ -47,7 +47,8 @@ days as (
 
 sequenced as (
     select
-        *,
+        calendar_date, is_weekday, holiday_status, holiday_occasion, calendar_source,
+        is_trading_day,
         sum(case when is_trading_day then 1 else 0 end)
             over (order by calendar_date rows between unbounded preceding and current row)
             as trading_days_so_far,
@@ -67,6 +68,9 @@ select
     {{ iso_week_id('calendar_date') }} as trading_week_id,
     extract(year from calendar_date) * 100 + extract(month from calendar_date) as trading_month_id,
     extract(year from calendar_date) as trading_year_id,
+    sum(case when is_trading_day then 1 else 0 end) over (
+        partition by extract(year from calendar_date), extract(month from calendar_date)
+    ) as month_session_count,
     coalesce(
         is_trading_day
         and (next_same_kind_date is null

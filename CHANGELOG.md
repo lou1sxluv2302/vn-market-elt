@@ -7,15 +7,18 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
-- dbt marts (P2 part 2, #20): `dim_trading_calendar` (observed history, weekdays minus
-  seeded holidays after it), `dim_security` (SCD2 exchange; the HNX→HOSE move; tick-
-  inferred exchange for delisted symbols, flagged), `fct_price_daily` (v1's drop rules,
-  exchange, tick and band of the trade date), `fct_liquidity_daily` (ADV20 over previous
-  non-stale rows, provisional tiers), `fct_universe_daily` (flag and first exclusion
-  reason). Portable date macros; ten unit tests, mutation-tested.
-- `tools/reconcile_v1_marts.py`: marts against v1 - observed calendar exact, later
-  differences only on seeded holidays; prices, `is_stale` and universe equal except
-  symbols touched by source choice or a different exchange. Reads marts as `sa-bi-reader`.
+- dbt marts (P2 part 2, #20, ADR-0028): `dim_trading_calendar` (observed history, weekdays
+  minus seeded holidays after it, sessions per month), `dim_security` (SCD2 exchange; the
+  HNX→HOSE move; tick-inferred exchange for delisted symbols, flagged),
+  `fct_price_daily` (v1's drop rules; exchange, tick and band of the trade date),
+  `fct_liquidity_daily` (ADV20 over previous non-stale rows, provisional tiers),
+  `fct_universe_daily` (flag and first exclusion reason). Portable date macros; six new
+  unit tests, every mutant of the key rules caught.
+- `tools/reconcile_v1_marts.py`: marts against v1, every difference explained row by row
+  by its mechanism (holiday seed, source choice and its effect on `is_stale` and ADV
+  windows, inferred exchange); anything else fails. Reads marts as `sa-bi-reader`.
+- `tools/check_seeds_vs_knowledge.py`: tick sizes, normal bands and holidays in the seeds
+  agree with `market-microstructure.md`; run in `ci / lint`.
 - dbt project (P2 part 1, #20): market-rule seeds with effective dates and sources
   (tick size, price band, holidays incl. 2026-11-24 and provisional 2027, exchange
   aliases, the HNX→HOSE move, known bad dates); staging latest-wins over the raw log;

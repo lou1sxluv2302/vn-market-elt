@@ -32,6 +32,8 @@ jobs:
         run: python tools/check_pins.py
       - name: Palette meets its measured rules (config/palette.yml)
         run: python tools/check_palette.py
+      - name: Market-rule seeds agree with the knowledge file
+        run: python tools/check_seeds_vs_knowledge.py
       - name: pre-commit hooks (security hooks run in the security workflow)
         env:
           SKIP: secret-scan,gitleaks,no-data-files
