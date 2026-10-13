@@ -8,7 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 - CI (#9): `ci` workflow (lint, self-test) and `security` workflow (gitleaks over
-  full history, secret scan, data-file block, pip-audit; weekly run). Actions pinned
+  full history, secret scan, data-file block, pip-audit; weekly run that also reports
+  outdated hook releases). Actions pinned
   to commit SHAs, read-only permissions.
 - `tools/run_self_tests.py` finds every `--self-test` with `ast` and runs it;
   `tools/check_pins.py` keeps tool versions equal across pyproject, hooks and workflows.

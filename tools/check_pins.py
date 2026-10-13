@@ -1,8 +1,10 @@
 """Check that a tool pinned in two places carries the same version in both.
 
-Dependabot bumps `pyproject.toml` and workflow files but not
-`.pre-commit-config.yaml`, so a bump can leave CI and the local hooks on
-different versions. Each pair below names the two places one version lives.
+Dependabot bumps `pyproject.toml` but not `.pre-commit-config.yaml`, and neither
+Dependabot nor `pre-commit autoupdate` touches a version held in a workflow
+variable, so a bump on one side leaves CI and the local hooks on different
+versions. Each pair below names the two places one version lives. Staleness
+(a newer release exists) is reported by the weekly `hooks-current` job.
 
 Exit codes: 0 = every pair matches · 1 = a pair differs or a version is missing.
 
@@ -14,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 import tempfile
 from collections.abc import Callable
@@ -103,6 +106,9 @@ def self_test() -> int:
             "a missing pin exits 1": (make(Path(tmp, "d"), "0.17.0", None), 1),
         }
         results = {name: check(root) == expected for name, (root, expected) in cases.items()}
+    results["an unknown argument is rejected with exit 2"] = subprocess.run(  # noqa: S603
+        [sys.executable, __file__, "--bogus"], capture_output=True, timeout=60
+    ).returncode == 2
     print()
     for name, ok in results.items():
         print(f"{'✅' if ok else '🔴'} {name}")
