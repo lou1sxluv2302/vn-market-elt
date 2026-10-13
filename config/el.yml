@@ -1,0 +1,34 @@
+# Extract-load settings. Local paths and the project id are in config/env/prod.yml (git-ignored).
+
+v1_history:
+  pipeline_name: v1_history
+  dataset: raw_vnstock
+  bq_location: US
+
+  # Daily OHLCV parquet, one folder per ingest date: source=<s>/dataset=ohlcv_daily/ingest_date=<d>/*.parquet
+  # dnse_chart is left out: in v1 it is a cross-check source, never written to the chain.
+  ohlcv:
+    sources: [vnstock_quote, vndirect_dchart]
+    dataset_dir: ohlcv_daily
+    table: ohlcv_daily
+    partition_by_month_of: session_date   # ~315 partitions for 26 years, under the 4,000 a load job may touch
+    cluster_by: [symbol]
+
+  # Flat reference files, overwritten daily in v1: loaded as snapshots, one per file content.
+  reference:
+    source_dir: vnstock_data
+    files: [all_symbols, symbols_by_exchange, symbols_by_industries, industries_icb, company_overview]
+    table_prefix: ref_
+
+  # Files whose name ends in anything other than ".parquet" (v1 keeps daily *.parquet.bak_<date>
+  # snapshots next to the live files) are never read.
+  file_suffix: .parquet
+
+  # The loader runs as sa-loader through impersonation (name in config/env/prod.yml).
+  oauth_scope: https://www.googleapis.com/auth/cloud-platform
+  impersonation_lifetime_seconds: 3600   # the token's maximum life; a full history load takes minutes
+
+  # Outbound timeouts (engineering rule: every call has one).
+  bigquery_http_timeout_seconds: 60
+  bigquery_file_upload_timeout_seconds: 1800
+  bigquery_retry_deadline_seconds: 300

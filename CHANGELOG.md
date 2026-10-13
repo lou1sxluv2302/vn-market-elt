@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- P1 history load (#18): `vnmarket.el.load_v1_history` (dlt, append-only, every pull
+  kept with file lineage; reference lists as content-hashed snapshots; backups never
+  read; dry run by default) and `tools/reconcile_v1.py` (raw = parquet per file,
+  latest-wins reproduces v1 except explained residuals, reference lists); both
+  self-tested on synthetic data with a local DuckDB destination.
+- `sa-loader`: writes `raw_vnstock` only; the owner reaches it by impersonation, no key.
 - Terraform (#14, ADR-0027): `bootstrap` stack (APIs, versioned state bucket) and
   `main` stack (raw bucket, 6 datasets, 4 service accounts with resource-scoped IAM,
   WIF for GitHub Actions pinned to the repository id, `vnstock-api-key` container,

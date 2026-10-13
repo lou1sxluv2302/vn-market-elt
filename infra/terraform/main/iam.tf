@@ -16,6 +16,14 @@ resource "google_project_iam_member" "ci_plan" {
   member  = google_service_account.this["sa-ci-plan"].member
 }
 
+# The loader runs on the owner's machine (the v1 history lives there) as
+# sa-loader: the owner may mint short-lived tokens for it, nobody else may.
+resource "google_service_account_iam_member" "owner_impersonates_loader" {
+  service_account_id = google_service_account.this["sa-loader"].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "user:${var.owner_email}"
+}
+
 resource "google_project_iam_custom_role" "ci_plan_compute" {
   role_id     = "ciPlanComputeReader"
   title       = "CI plan: compute metadata reader"

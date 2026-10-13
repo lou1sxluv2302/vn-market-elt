@@ -12,6 +12,8 @@ dependencies = [
 # Sponsor-only vnstock libraries are NOT on PyPI and are never required in CI;
 # the collector isolates them behind an interface (spec §14.7).
 dev = ["ruff==0.17.0", "pre-commit==4.6.2", "pip-audit==2.10.1"]
+# Extract-load (P1 history, later daily pulls); CI tests it against a local DuckDB destination.
+el = ["dlt[bigquery,duckdb]==1.30.0"]
 
 [build-system]
 requires = ["setuptools>=69"]
@@ -26,3 +28,9 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+# SQL text is assembled from code constants and config (table, column names);
+# every value that comes from data is bound as a query parameter.
+"src/vnmarket/el/load_v1_history.py" = ["S608"]
+"tools/reconcile_v1.py" = ["S608"]

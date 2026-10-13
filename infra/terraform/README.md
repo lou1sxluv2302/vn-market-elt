@@ -31,7 +31,7 @@ gcloud compute firewall-rules delete <each name listed>
 gcloud compute networks delete default
 ```
 
-Then store the outputs as GitHub Actions **secrets** (not variables: the repository is public and only secrets are masked in logs): `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER` (output `wif_provider`), `GCP_CI_SERVICE_ACCOUNT` (output `ci_service_account`), `ALERT_EMAIL`.
+Then store the outputs as GitHub Actions **secrets** (not variables: the repository is public and only secrets are masked in logs): `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER` (output `wif_provider`), `GCP_CI_SERVICE_ACCOUNT` (output `ci_service_account`), `ALERT_EMAIL`, `OWNER_EMAIL`.
 
 ## Free tier and cost
 

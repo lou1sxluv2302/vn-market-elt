@@ -84,6 +84,7 @@ jobs:
         env:
           TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
           TF_VAR_alert_email: ${{ secrets.ALERT_EMAIL }}
+          TF_VAR_owner_email: ${{ secrets.OWNER_EMAIL }}
           STATE_BUCKET: ${{ secrets.GCP_PROJECT_ID }}-tfstate
         run: |
           # stdout and stderr both stay out of the public log: provider errors can
