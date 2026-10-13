@@ -14,7 +14,7 @@ they catch.
 
 Every research hypothesis is registered before it runs, measured against a
 random same-session control with `n_eff` for overlapping windows, explored on
-2015–2020 only, and confirmed only by forward accumulation. Parameters are
+2015-2020 only, and confirmed only by forward accumulation. Parameters are
 never tuned toward a better result.
 
 ## Consequences

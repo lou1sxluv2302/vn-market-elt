@@ -1,6 +1,6 @@
 ---
 name: harvest-knowledge
-description: Bring a piece of v1's Vietnamese knowledge base into vn-market-elt's English docs/knowledge — check its inventory label, read the source, keep evidence levels, and keep research content out of the public repo. Use for phase K0.3, or whenever a phase needs v1 knowledge (indicators, flows, BI conventions, market rules).
+description: Bring a piece of v1's Vietnamese knowledge base into vn-market-elt's English docs/knowledge - check its inventory label, read the source, keep evidence levels, and keep research content out of the public repo. Use for phase K0.3, or whenever a phase needs v1 knowledge (indicators, flows, BI conventions, market rules).
 ---
 
 # harvest-knowledge

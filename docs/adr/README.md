@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Decisions D1–D24 of [`../spec.md`](../spec.md), one file each. Status values: Proposed · Accepted · Superseded.
+Decisions D1-D24 of [`../spec.md`](../spec.md), one file each. Status values: Proposed · Accepted · Superseded.
 
 | ADR | Title |
 |---|---|

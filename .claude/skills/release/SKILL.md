@@ -1,6 +1,6 @@
 ---
 name: release
-description: Cut a SemVer release of vn-market-elt — security audit, changelog with phase measurements, annotated tag and GitHub release.
+description: Cut a SemVer release of vn-market-elt - security audit, changelog with phase measurements, annotated tag and GitHub release.
 disable-model-invocation: true
 ---
 
@@ -14,7 +14,7 @@ Sequence only. Versions and release notes: `CONTRIBUTING.md` (Tags and releases)
 2. **Audit.** Run `security-audit`.
    Done when no Critical or High finding is open.
 
-3. **Changelog.** Pick the version from the tag table in `CONTRIBUTING.md`. Move `[Unreleased]` to `[X.Y.Z] — <date>`. Add the phase's **Measurements**, and **Upgrade notes** if a schema changed.
+3. **Changelog.** Pick the version from the tag table in `CONTRIBUTING.md`. Move `[Unreleased]` to `[X.Y.Z] - <date>`. Add the phase's **Measurements**, and **Upgrade notes** if a schema changed.
    Done when the changelog PR is open through `ship-pr`.
 
 4. **Merge.** The owner merges the changelog PR.

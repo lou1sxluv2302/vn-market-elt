@@ -1,6 +1,6 @@
 # vn-market-elt
 
-**An ELT platform for Vietnamese equity market data — from the exchange feed to
+**An ELT platform for Vietnamese equity market data - from the exchange feed to
 a BigQuery warehouse and a Power BI dashboard, on free-tier infrastructure.**
 
 > **Status:** foundations (phase P0). Design, decisions and domain knowledge are
@@ -43,12 +43,12 @@ vnstock daily history ─► dlt ───────────────�
 | Layer | Choice | Why |
 |---|---|---|
 | Capture | Python WebSocket client, systemd on a VM | Long-lived process with a stable disk |
-| Extract–load | dlt, GCS load jobs | Load jobs are free; raw stays verbatim |
+| Extract-load | dlt, GCS load jobs | Load jobs are free; raw stays verbatim |
 | Warehouse | BigQuery | Perpetual free tier |
 | Transform and test | dbt | Lineage, tests and docs; portable across warehouses |
 | BI | Power BI Desktop | Manual refresh keeps query cost near zero |
 | Infrastructure | Terraform | Changes reviewed as a plan before they apply |
-| CI | GitHub Actions | dbt runs on DuckDB with synthetic data — no cloud credentials in CI |
+| CI | GitHub Actions | dbt runs on DuckDB with synthetic data - no cloud credentials in CI |
 
 The same dbt project is later run on **Snowflake, Athena and Databricks** to
 compare cost, speed and SQL portability.
@@ -81,7 +81,7 @@ tests/         synthetic fixtures only
 |---|---|
 | `v0.1.0` | Foundations: repository security, CI, infrastructure as code |
 | `v0.2.0` | Cold path: history in BigQuery, dbt models, data-quality tests |
-| `v0.3.0` – `v0.4.0` | Hot path: feed collector, streaming load, intraday dashboard |
+| `v0.3.0` - `v0.4.0` | Hot path: feed collector, streaming load, intraday dashboard |
 | `v1.0.0` | Incremental loads, full security review, demo-ready |
 | `v1.1`+ | Snowflake · Athena · Databricks comparison |
 
@@ -89,7 +89,7 @@ Progress is tracked in [milestones](../../milestones).
 
 ## Documentation
 
-- [Specification](docs/spec.md) — goals, phases, latency budget, security design
+- [Specification](docs/spec.md) - goals, phases, latency budget, security design
 - [Architecture decisions](docs/adr/README.md)
 - [Engineering rules](docs/engineering-rules.md)
 - [Glossary of Vietnamese market terms](docs/glossary.md)

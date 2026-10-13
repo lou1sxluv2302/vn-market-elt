@@ -7,13 +7,13 @@
 ## Context
 
 The owner's priority is a stock-selection research track. Its hypotheses,
-features and results are a private asset. Streaming (S0–S3) serves a different
-goal — intraday latency — and is not urgent.
+features and results are a private asset. Streaming (S0-S3) serves a different
+goal - intraday latency - and is not urgent.
 
 ## Decision
 
 Run the research track in a **private companion repository** that reads this
-project's marts. Schedule it after the cold path (P1–P3) and before streaming.
+project's marts. Schedule it after the cold path (P1-P3) and before streaming.
 
 ## Consequences
 

@@ -1,6 +1,6 @@
 ---
 name: security-audit
-description: Run the read-only security audit of vn-market-elt and its private companion — secrets across every git object, ignore rules, public-content leaks, dependencies, CI and infrastructure. Use before a repository's first push, before every release tag, after an incident, monthly, or when asked to audit or check security.
+description: Run the read-only security audit of vn-market-elt and its private companion - secrets across every git object, ignore rules, public-content leaks, dependencies, CI and infrastructure. Use before a repository's first push, before every release tag, after an incident, monthly, or when asked to audit or check security.
 ---
 
 # security-audit

@@ -14,6 +14,11 @@ repos:
         language: fail
         files: \.(parquet|pbix|duckdb|csv|jsonl)$
         exclude: ^tests/fixtures/
+      - id: no-typographic-dashes
+        name: ASCII hyphen only (no em or en dash)
+        language: pygrep
+        entry: '[\N{EN DASH}\N{EM DASH}]'
+        types: [text]
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.18.4
     hooks:

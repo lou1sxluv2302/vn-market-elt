@@ -1,6 +1,6 @@
 ---
 name: ship-pr
-description: Verify and open a pull request in vn-market-elt — review the diff for leaks, run every check, reconcile the docs, then wait for the owner's go-ahead before pushing. Use before any push, pull request, or "commit and push" in this repo.
+description: Verify and open a pull request in vn-market-elt - review the diff for leaks, run every check, reconcile the docs, then wait for the owner's go-ahead before pushing. Use before any push, pull request, or "commit and push" in this repo.
 ---
 
 # ship-pr
@@ -31,6 +31,7 @@ Sequence only. Rules: `CONTRIBUTING.md` (commits, PRs), `docs/engineering-rules.
    - A changed decision has an ADR.
    - Relative links resolve.
    - `CLAUDE.md` stays ≤ 80 lines.
+   - No em or en dash anywhere; the ASCII `-` only (`CONTRIBUTING.md`, Text style).
 
    Done when each item is ✅ or ⚪ with a reason.
 

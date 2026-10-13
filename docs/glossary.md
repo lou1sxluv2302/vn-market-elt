@@ -1,4 +1,4 @@
-# Glossary — Vietnamese market terms
+# Glossary - Vietnamese market terms
 
 The **single source** for how Vietnamese market concepts are named in code
 (spec D15). Add a term here **before** using it in code. Two English names for
@@ -7,11 +7,11 @@ one concept cannot be reconciled by any check.
 | Vietnamese | Code name | Notes |
 |---|---|---|
 | phiên giao dịch | `session` · `trade_date` | `trade_date` is a DATE in Vietnam time |
-| giá tham chiếu | `reference_price_vnd` | The base for intraday % change — never the adjusted close |
+| giá tham chiếu | `reference_price_vnd` | The base for intraday % change - never the adjusted close |
 | giá trần / giá sàn | `ceiling_price_vnd` / `floor_price_vnd` | |
 | biên độ dao động | `price_band` | HOSE ±7%, HNX ±10%, UPCoM ±15% |
 | bước giá | `tick_size` | |
-| GDKHQ — ngày giao dịch không hưởng quyền | `ex_rights_date` | |
+| GDKHQ - ngày giao dịch không hưởng quyền | `ex_rights_date` | |
 | sự kiện quyền | `corporate_action` | Dividends, splits, rights issues |
 | giá điều chỉnh / giá thô | `adjusted_price` / `raw_price` | Vendors rewrite adjusted history after corporate actions |
 | khối ngoại | `foreign_flow` · `foreign_buy_value_vnd` · `foreign_sell_value_vnd` | |
