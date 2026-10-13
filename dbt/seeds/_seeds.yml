@@ -1,5 +1,9 @@
 version: 2
 
+# Column types: only names every target warehouse knows (date, boolean, numeric). Integer
+# columns are left to inference - BigQuery calls the type INT64, DuckDB BIGINT, and a name
+# one of them rejects broke the first BigQuery build.
+#
 # Market rules split out of v1's single market_rules.yml (docs/knowledge/market-microstructure.md
 # §12). Every rule row has an effective period and an as_of; null effective_from means "before
 # the first known date". Unverified facts are null, never guessed.
@@ -11,8 +15,6 @@ seeds:
       ticks are unverified in the knowledge file, so they have no row (not a guessed one).
     config:
       column_types:
-        price_from_vnd: bigint
-        tick_vnd: bigint
         effective_from: date
         effective_to: date
         as_of: date
