@@ -86,6 +86,10 @@ def line_of(text: str, pos: int) -> int:
     return text.count("\n", 0, pos) + 1
 
 
+def format_finding(kind: str, blob: str, where: str, text: str, pos: int, value: str) -> str:
+    return f"[{kind}] {blob[:7]} {where}:L{line_of(text, pos)} -> {redact(value)}"
+
+
 def scan(repo: Path) -> tuple[list[str], list[str]]:
     """Return (secret findings, warnings), each a list of redacted lines."""
     listing = git(repo, "cat-file", "--batch-all-objects", "--batch-check")
@@ -110,23 +114,21 @@ def scan(repo: Path) -> tuple[list[str], list[str]]:
         text = git(repo, "cat-file", "-p", blob)
         where = ", ".join(sorted(paths.get(blob, {"<no tree>"})))
 
-        def finding(kind: str, pos: int, value: str,
-                    _text: str = text, _where: str = where, _blob: str = blob) -> str:
-            return f"[{kind}] {_blob[:7]} {_where}:L{line_of(_text, pos)} -> {redact(value)}"
-
         for name, pattern in SECRET_PATTERNS.items():
             for m in re.finditer(pattern, text):
-                secrets.append(finding(name, m.start(), m.group(0)))
+                secrets.append(format_finding(name, blob, where, text, m.start(), m.group(0)))
         for m in ASSIGNMENT.finditer(text):
             if not PLACEHOLDER.search(m.group(0)) and entropy(m.group(1)) >= 3.5:
-                secrets.append(finding("assignment", m.start(), m.group(1)))
+                secrets.append(
+                    format_finding("assignment", blob, where, text, m.start(), m.group(1))
+                )
         if where == SELF_PATH:  # this file's own patterns would match themselves
             continue
         for name, pattern in WARNING_PATTERNS.items():
             for m in re.finditer(pattern, text):
                 if name == "email" and is_allowed_email(m.group(0)):
                     continue
-                warnings.append(finding(name, m.start(), m.group(0)))
+                warnings.append(format_finding(name, blob, where, text, m.start(), m.group(0)))
     return secrets, warnings
 
 
@@ -167,6 +169,8 @@ def self_test() -> int:
             (repo / "config.yml").unlink()
             git(repo, "add", "-A")
             git(repo, "commit", "-q", "--amend", "-m", "first, key removed")
+            git(repo, "config", "user.email", "jane.doe@corp.example")
+            git(repo, "commit", "-q", "--allow-empty", "-m", "personal committer")
         return repo
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -180,7 +184,12 @@ def self_test() -> int:
     checks = {
         "control repo has no findings": control_secrets == [],
         "control repo has no warnings (noreply author allowed)": control_warnings == [],
-        "planted personal e-mail is warned": any("[email]" in w for w in planted_warnings),
+        "planted personal e-mail in a file is warned": any(
+            "[email]" in w for w in planted_warnings
+        ),
+        "planted personal commit e-mail is warned": any(
+            "[commit_email]" in w for w in planted_warnings
+        ),
         "planted key is gone from the tip": "config.yml" not in tip_files,
         "planted key is still found in history": any(
             "aws_access_key" in s for s in planted_secrets

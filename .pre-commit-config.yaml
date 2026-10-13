@@ -1,4 +1,4 @@
-# Install once: pip install pre-commit && pre-commit install   (spec step 0.5)
+# Install: see "Local setup" in CONTRIBUTING.md (pinned versions live in pyproject.toml).
 repos:
   - repo: local
     hooks:

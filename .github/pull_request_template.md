@@ -1,12 +1,18 @@
+<!-- Title: Conventional Commit, e.g. `feat(ingest): ...` - squash merge uses it as the commit. -->
+
 ## What
 
 ## Why
 
-Refs #
+Refs: #
+
+## Deviations
+
+<!-- Where this differs from the spec, issue or an ADR, and why. "None." if none. -->
 
 ## How verified
 
-<!-- Command and exit code for each check; a skipped check is ⚪, never ✅. -->
+<!-- Command and exit code per check; result symbols as in CONTRIBUTING.md. -->
 
 | Check | Result |
 |---|---|
