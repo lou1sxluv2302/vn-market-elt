@@ -45,6 +45,8 @@ api_key.json
 *.tfstate
 *.tfstate.*
 *.tfvars
+# A saved plan can hold sensitive values.
+*.tfplan
 !*.example.tfvars
 crash.log
 

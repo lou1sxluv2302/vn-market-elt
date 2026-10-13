@@ -67,7 +67,7 @@ a pull request.
   | From phase | Required checks added |
   |---|---|
   | P0 | `ci / lint` · `ci / self-test` · `security / gitleaks` · `security / data-files` · `security / pip-audit` |
-  | P0, step 0.7 | `infra / terraform-validate` · `infra / terraform-plan` (only when `infra/terraform/` changes) |
+  | P0, step 0.7 | `infra / terraform-validate` · `infra / terraform-plan` (plans only when `infra/terraform/` or its workflow changes; otherwise the job passes with a "⚪ not run" notice: green there means "nothing to plan", not "planned") |
   | S3 | `ci / dbt-parse` (no warehouse connection) |
   | P5 | `ci / dbt-build` (dbt-duckdb on synthetic data) |
 

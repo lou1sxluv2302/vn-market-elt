@@ -7,6 +7,13 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Terraform (#14, ADR-0027): `bootstrap` stack (APIs, versioned state bucket) and
+  `main` stack (raw bucket, 6 datasets, 4 service accounts with resource-scoped IAM,
+  WIF for GitHub Actions pinned to the repository id, `vnstock-api-key` container,
+  security alerts; collector VM in its own VPC behind `create_vm`).
+- `infra` workflow: `terraform-validate`, and `terraform-plan` through WIF that
+  prints only a change count, with every environment value in masked secrets.
+  Dependabot watches the Terraform providers.
 - Knowledge K0.3 (#12): `indicators.md`, `flows.md`, `bi-conventions.md`; 26 new
   terms in `CONTEXT.md`.
 - A measured v2 palette (ADR-0026): `config/palette.yml` for light and dark themes,
