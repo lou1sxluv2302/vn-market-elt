@@ -30,7 +30,8 @@ target-version = "py311"
 select = ["E", "F", "I", "B", "UP", "S"]
 
 [tool.ruff.lint.per-file-ignores]
-# SQL text is assembled from code constants and config (table, column names);
-# every value that comes from data is bound as a query parameter.
+# SQL text is assembled from code constants and committed config (table, column
+# and source names); values that come from data (symbol lists) are bound as
+# query parameters. Nothing a user or a data row supplies is interpolated.
 "src/vnmarket/el/load_v1_history.py" = ["S608"]
 "tools/reconcile_v1.py" = ["S608"]

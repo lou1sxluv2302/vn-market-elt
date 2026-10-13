@@ -1,26 +1,45 @@
-"""Reconcile the P1 history load against v1: three checks, each its own verdict.
+"""Reconcile the P1 history load against v1: each check is its own verdict.
 
-1. raw = parquet: per loaded file, BigQuery holds exactly the parquet's rows
-   (count, sums of prices and volume, date range).
-2. latest-wins over raw reproduces v1's price table: per source, the newest
-   pull of each (symbol, session_date) equals v1's row. Differences are
-   classified; only these are allowed, because v1's own process explains them:
-     - held_by_fallback: v1 kept the fallback source's row for that key;
+1. raw = parquet: for every file up to the newest pull in raw, BigQuery holds
+   exactly the parquet's rows (count, date range, sums and a date-weighted
+   checksum of every price and volume column). A file loaded twice, cut short or
+   missing fails.
+2. latest-wins over raw reproduces v1's price table. Per source, the newest pull
+   of each (symbol, session_date) is compared with v1's `bronze_price`. v1 did not
+   take the newest pull across sources: it wrote only the source it used that day,
+   so the comparison is per source, and these differences are explained by v1's
+   own process - each allowed up to the count measured in config/el.yml:
+     - held_by_fallback: v1 kept the fallback source's row for a primary key;
      - absent_in_v1: v1 removed the key when it re-fetched a date range;
-     - fallback_without_raw: a v1 fallback row older than v1's parquet log.
-   Any value mismatch, or a v1 key missing from raw, fails.
-3. reference lists = parquet: the newest snapshot of each list has the file's
-   row count and content hash.
+     - fallback_batch_not_in_log: a v1 fallback row written by a batch that never
+       reached v1's parquet log (no raw row carries its `_ingested_at`); measured:
+       one batch, 2026-08-06 11:40 ICT, sessions 2026-08-03 to 08-05.
+   A value mismatch, a v1 key missing from raw, a fallback row from a batch that
+   is in the log but differs from raw or is missing from it, or a row from an
+   unknown source fails.
+3. reference lists = parquet: the newest snapshot of each list has the file's row
+   count and content hash.
+4. v1 untouched: v1's bronze tree and DuckDB files are byte-for-byte as before.
 
-Read-only everywhere: v1's parquet and DuckDB (`read_only=True`) on this
-machine, BigQuery through application-default credentials. Aggregates are
-compared per symbol first; rows are fetched only for symbols that differ.
+Per-symbol signatures (count, dates, sums, date-weighted checksums) are compared
+first; rows are fetched only for symbols whose signature differs, plus every
+symbol v1 holds from the fallback source. The weighted checksum catches values
+moved between dates and changes that cancel in a plain sum; it is not a
+cryptographic hash, so equal signatures are strong evidence, not proof.
+
+Latest-wins order: newest `_ingested_at`, then newest `_ingest_partition`, then
+the later file name. v1 kept the last row of a batch for duplicate keys, which
+the first two keys reproduce; the third only breaks ties v1 never had.
+
+Read-only: v1's parquet and DuckDB (`read_only=True`); BigQuery as `sa-loader`
+through impersonation (scoped to `raw_vnstock`). Run it outside 15:00-16:00,
+when v1's daily job writes.
 
 Exit codes: 0 = all checks pass · 1 = a check fails · 2 = usage, config or
 access error.
 
 Usage:
-    python tools/reconcile_v1.py [--until-ingest-date YYYY-MM-DD]
+    python tools/reconcile_v1.py
     python tools/reconcile_v1.py --self-test
 """
 
@@ -34,54 +53,88 @@ from pathlib import Path
 
 import duckdb
 import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from vnmarket.common.config import load_config, load_env, utf8_stdio
-from vnmarket.el.load_v1_history import ohlcv_files, reference_files, sha256_of
-
-QUERY_TIMEOUT_SECONDS = 900
-PRICE_COLUMNS = ["open_vnd", "high_vnd", "low_vnd", "close_vnd", "volume"]
-ALLOWED = {"held_by_fallback", "absent_in_v1", "fallback_without_raw", "equal"}
-
-# Aggregate signature of a set of rows; equal signatures mean equal rows in practice.
-SIGNATURE = ", ".join(
-    ["count(*) as n", "min(session_date) as first_date", "max(session_date) as last_date"]
-    + [f"sum({c}) as sum_{c}" for c in PRICE_COLUMNS]
+from vnmarket.el.load_v1_history import (
+    InputError,
+    ohlcv_files,
+    reference_files,
+    sha256_of,
+    tree_fingerprint,
 )
+
+PRICE_COLUMNS = ["open_vnd", "high_vnd", "low_vnd", "close_vnd", "volume"]
+SIGNATURE_COLUMNS = ["n", "first_date", "last_date"] + [
+    f"{kind}_{c}" for c in PRICE_COLUMNS for kind in ("sum", "wsum")
+]
+EXPLAINED = {"held_by_fallback", "absent_in_v1", "fallback_batch_not_in_log"}
+PASSING = {"equal", "fallback_equal"} | EXPLAINED
+
+
+# --- SQL shared by BigQuery and DuckDB ----------------------------------------
+
+
+def signature(dialect: str, modulus: int) -> str:
+    """Aggregate signature of a set of rows; `dialect` is 'bigquery' or 'duckdb'."""
+    day = (
+        "unix_date(session_date)"
+        if dialect == "bigquery"
+        else "date_diff('day', date '1970-01-01', session_date)"
+    )
+    weight = f"(mod({day}, {modulus}) + 1)"
+    parts = ["count(*) as n", "min(session_date) as first_date", "max(session_date) as last_date"]
+    for c in PRICE_COLUMNS:
+        parts += [f"sum({c}) as sum_{c}", f"sum({c} * {weight}) as wsum_{c}"]
+    return ", ".join(parts)
+
+
+def latest_sql(table: str, where: str = "") -> str:
+    """Newest pull of each (source, symbol, session_date); valid in BigQuery and DuckDB."""
+    return f"""
+        select _source_id as source, symbol, session_date, {", ".join(PRICE_COLUMNS)}
+        from {table} {where}
+        qualify row_number() over (
+            partition by _source_id, symbol, session_date
+            order by _ingested_at desc, _ingest_partition desc, _file_name desc) = 1"""
+
+
+def differing(con: duckdb.DuckDBPyConnection, left: str, right: str, keys: list[str]) -> list:
+    """Keys of the rows of two registered signature tables that are not identical."""
+    on = " and ".join(f"a.{k} = b.{k}" for k in keys)
+    unequal = " or ".join(f"a.{c} is distinct from b.{c}" for c in SIGNATURE_COLUMNS)
+    pick = ", ".join(f"coalesce(a.{k}, b.{k})" for k in keys)
+    return con.execute(
+        f"select {pick} from {left} a full join {right} b on {on} where {unequal}"
+    ).fetchall()
 
 
 # --- comparison logic (pure: arrow tables in, verdicts out) -------------------
 
 
 def compare_files(parquet_stats: pa.Table, raw_stats: pa.Table) -> list[str]:
-    """Check 1. Both tables: _file_name + SIGNATURE columns. Returns problems."""
+    """Check 1. Both: _file_name + SIGNATURE_COLUMNS. One line per file that differs."""
     con = duckdb.connect()
     con.register("p", parquet_stats)
     con.register("r", raw_stats)
-    rows = con.execute("""
-        select coalesce(p._file_name, r._file_name), p.n, r.n
-        from p full join r using (_file_name)
-        where p.n is distinct from r.n or p.sum_close_vnd is distinct from r.sum_close_vnd
-           or p.sum_volume is distinct from r.sum_volume
-           or p.first_date is distinct from r.first_date or p.last_date is distinct from r.last_date
-    """).fetchall()
-    return [f"{name}: parquet {pn} rows, raw {rn} rows or sums differ" for name, pn, rn in rows]
+    return [f"{name}: rows or sums differ" for (name,) in differing(con, "p", "r", ["_file_name"])]
 
 
-def classify(raw_latest: pa.Table, v1_rows: pa.Table, primary: str) -> dict[str, int]:
-    """Check 2. raw_latest: newest raw row per (source, symbol, session_date);
-    v1_rows: v1's table. Both carry symbol, session_date, PRICE_COLUMNS, source.
-    Returns the count per category."""
+def classify(
+    raw_latest: pa.Table, v1_rows: pa.Table, primary: str, fallback: str, raw_batches: pa.Table
+) -> dict[str, int]:
+    """Check 2. raw_latest: newest raw row per (source, symbol, session_date); v1_rows: v1's
+    rows with `source` and `_ingested_at`; raw_batches: distinct (source, _ingested_at) in raw.
+    Each primary key and each v1 non-primary row gets exactly one category."""
     con = duckdb.connect()
     con.register("raw", raw_latest)
     con.register("v1", v1_rows)
+    con.register("batches", raw_batches)
     same = " and ".join(f"r.{c} is not distinct from v.{c}" for c in PRICE_COLUMNS)
-    counts = dict(
-        con.execute(f"""
-        with keys as (
-            select symbol, session_date from raw
-            union select symbol, session_date from v1
+    rows = con.execute(f"""
+        with primary_keys as (
+            select symbol, session_date from raw where source = '{primary}'
+            union select symbol, session_date from v1 where source = '{primary}'
         )
         select category, count(*) from (
             select case
@@ -91,171 +144,163 @@ def classify(raw_latest: pa.Table, v1_rows: pa.Table, primary: str) -> dict[str,
                 when {same} then 'equal'
                 else 'value_mismatch'
             end as category
-            from keys k
+            from primary_keys k
             left join raw r on r.source = '{primary}' and r.symbol = k.symbol
                            and r.session_date = k.session_date
             left join v1 v on v.symbol = k.symbol and v.session_date = k.session_date
-            where r.symbol is not null or v.source = '{primary}'
             union all
             select case
-                when f.symbol is null then 'fallback_without_raw'
-                when {same.replace("r.", "f.")} then 'equal'
-                else 'value_mismatch'
+                when v.source <> '{fallback}' then 'unknown_source'
+                when r.symbol is not null and {same} then 'fallback_equal'
+                when b.source is null then 'fallback_batch_not_in_log'
+                when r.symbol is not null then 'fallback_mismatch'
+                else 'fallback_missing_from_raw'
             end
             from v1 v
-            left join raw f on f.source = v.source and f.symbol = v.symbol
-                           and f.session_date = v.session_date
+            left join raw r on r.source = v.source and r.symbol = v.symbol
+                           and r.session_date = v.session_date
+            left join batches b on b.source = v.source and b._ingested_at = v._ingested_at
             where v.source <> '{primary}'
         ) group by category
     """).fetchall()
-    )
-    return counts
+    return dict(rows)
+
+
+def verdict(counts: dict[str, int], allowed: dict[str, int]) -> list[str]:
+    """Problems: any failing category, or an explained category above its measured count."""
+    problems = [f"{c}: {n}" for c, n in counts.items() if c not in PASSING]
+    problems += [
+        f"{c}: {counts[c]} > {allowed[c]} measured"
+        for c in sorted(EXPLAINED)
+        if counts.get(c, 0) > allowed[c]
+    ]
+    return problems
 
 
 # --- data access (read-only) --------------------------------------------------
 
 
-def parquet_file_stats(files: list) -> pa.Table:
+def parquet_file_stats(files: list, modulus: int) -> pa.Table:
     con = duckdb.connect()
     parts = []
+    sig = signature("duckdb", modulus)
     for item in files:
         con.register("t", pq.read_table(item.path, columns=["session_date", *PRICE_COLUMNS]))
-        row = con.execute(f"select {SIGNATURE} from t").fetch_arrow_table()
+        row = con.execute(f"select {sig} from t").to_arrow_table()
         parts.append(row.append_column("_file_name", pa.array([item.relative])))
         con.unregister("t")
     return pa.concat_tables(parts)
 
 
-def bq_client(project: str):  # noqa: ANN201 - google type import is optional
+def run() -> int:
     from google.cloud import bigquery
 
-    return bigquery.Client(project=project)
+    from vnmarket.common.gcp import impersonated
 
-
-def bq_arrow(client, sql: str, params: list | None = None) -> pa.Table:  # noqa: ANN001
-    from google.cloud import bigquery
-
-    job = client.query(
-        sql,
-        job_config=bigquery.QueryJobConfig(query_parameters=params or []),
-        timeout=QUERY_TIMEOUT_SECONDS,
-    )
-    return job.result(timeout=QUERY_TIMEOUT_SECONDS).to_arrow(create_bqstorage_client=False)
-
-
-def latest_sql(table: str, where: str = "") -> str:
-    return f"""
-        select regexp_extract(_file_name, r'^source=([^/]+)/') as source, symbol, session_date,
-               {", ".join(PRICE_COLUMNS)}
-        from `{table}` {where}
-        qualify row_number() over (
-            partition by regexp_extract(_file_name, r'^source=([^/]+)/'), symbol, session_date
-            order by _ingested_at desc, _ingest_partition desc, _file_name desc) = 1"""
-
-
-def run(until: dt.date | None) -> int:
-    from google.cloud import bigquery
-
-    cfg = load_config("el")["v1_history"]
+    el = load_config("el")
+    cfg, rec = el["v1_history"], el["reconcile_v1"]
     env = load_env()
     bronze = Path(env["v1"]["bronze_dir"])
     duck_path = Path(env["v1"]["duckdb_path"])
     project = env["gcp"]["project_id"]
-    table = f"{project}.{cfg['dataset']}.{cfg['ohlcv']['table']}"
-    primary = cfg["ohlcv"]["sources"][0]
-    client = bq_client(project)
-    v1_mtime_before = duck_path.stat().st_mtime
+    table = f"`{project}.{cfg['dataset']}.{cfg['ohlcv']['table']}`"
+    primary, fallback = cfg["ohlcv"]["sources"]
+    timeout = rec["query_timeout_seconds"]
+    modulus = rec["checksum_modulus"]
+    credentials = impersonated(
+        env["el"]["loader_service_account"], cfg["oauth_scope"], cfg["impersonation_token_seconds"]
+    )
+    client = bigquery.Client(project=project, credentials=credentials)
 
-    files = ohlcv_files(bronze, cfg, until)
+    def bq(sql: str, params: list | None = None) -> pa.Table:
+        config = bigquery.QueryJobConfig(query_parameters=params or [])
+        job = client.query(sql, job_config=config, timeout=timeout)
+        return job.result(timeout=timeout).to_arrow(create_bqstorage_client=False)
+
+    v1_paths = [bronze, duck_path, duck_path.with_suffix(duck_path.suffix + ".wal")]
+    before = tree_fingerprint([p for p in v1_paths if p.exists()])
     verdicts: dict[str, bool] = {}
 
-    # 1. raw = parquet, per file
-    raw_stats = bq_arrow(client, f"select _file_name, {SIGNATURE} from `{table}` group by 1")
-    problems = compare_files(parquet_file_stats(files), raw_stats)
+    # 1. raw = parquet, per file, up to the newest pull in raw
+    until = bq(f"select max(_ingest_partition) as last_date from {table}").to_pylist()[0][
+        "last_date"
+    ]
+    raw_batches = bq(
+        f"select distinct _source_id as source, _ingested_at from {table} "
+        f"where _source_id = '{fallback}'"
+    )
+    files = ohlcv_files(bronze, cfg, until)
+    raw_stats = bq(f"select _file_name, {signature('bigquery', modulus)} from {table} group by 1")
+    problems = compare_files(parquet_file_stats(files, modulus), raw_stats)
     for line in problems[:20]:
         print(f"     {line}")
-    verdicts[f"raw = parquet for {len(files)} files"] = not problems
+    verdicts[f"raw = parquet for {len(files)} files up to {until}"] = not problems
 
-    # 2. latest-wins reproduces v1: compare per-symbol signatures, then rows for differing symbols
+    # 2. latest-wins over raw reproduces v1
     with duckdb.connect(str(duck_path), read_only=True) as v1:
-        # Signatures for the primary source only; every symbol that has a v1
-        # fallback row is compared row by row anyway.
         v1_sig = v1.execute(
-            f"""select _source_id as source, symbol, {SIGNATURE}
-            from bronze_price where _source_id = $1 group by 1, 2""",
+            f"select symbol, {signature('duckdb', modulus)} from bronze_price "
+            "where _source_id = $1 group by 1",
             [primary],
-        ).fetch_arrow_table()
-        raw_sig = bq_arrow(
-            client,
-            f"""select source, symbol, {SIGNATURE}
-            from ({latest_sql(table)}) where source = '{primary}' group by 1, 2""",
+        ).to_arrow_table()
+        raw_sig = bq(
+            f"select symbol, {signature('bigquery', modulus)} "
+            f"from ({latest_sql(table)}) where source = '{primary}' group by 1"
         )
-        fallback_symbols = [
+        fallback_symbols = {
             s
             for (s,) in v1.execute(
                 "select distinct symbol from bronze_price where _source_id <> $1", [primary]
             ).fetchall()
-        ]
+        }
         con = duckdb.connect()
         con.register("a", v1_sig)
         con.register("b", raw_sig)
-        differing = [
-            s
-            for (s,) in con.execute(f"""
-            select distinct coalesce(a.symbol, b.symbol) from a full join b
-              on a.source = b.source and a.symbol = b.symbol
-            where {
-                " or ".join(
-                    f"a.{c} is distinct from b.{c}"
-                    for c in ["n", "first_date", "last_date"] + [f"sum_{p}" for p in PRICE_COLUMNS]
-                )
-            }
-        """).fetchall()
-        ]
-        differing = sorted(set(differing) | set(fallback_symbols))
-        con.register("d", pa.table({"symbol": differing or [""]}))
-        equal_keys = con.execute("""select coalesce(sum(a.n), 0) from a join b
-            on a.source = b.source and a.symbol = b.symbol
-            where a.symbol not in (select symbol from d)""").fetchone()[0]
+        changed = {s for (s,) in differing(con, "a", "b", ["symbol"])}
+        symbols = sorted(changed | fallback_symbols)
         counts: dict[str, int] = {}
-        if differing:
+        if symbols:
             v1_rows = v1.execute(
-                f"select _source_id as source, symbol, session_date, {', '.join(PRICE_COLUMNS)} "
-                "from bronze_price where symbol in (select unnest($1))",
-                [differing],
-            ).fetch_arrow_table()
-            raw_rows = bq_arrow(
-                client,
+                f"select _source_id as source, symbol, session_date, _ingested_at, "
+                f"{', '.join(PRICE_COLUMNS)} from bronze_price "
+                "where symbol in (select unnest($1))",
+                [symbols],
+            ).to_arrow_table()
+            raw_rows = bq(
                 latest_sql(table, "where symbol in unnest(@symbols)"),
-                [bigquery.ArrayQueryParameter("symbols", "STRING", differing)],
+                [bigquery.ArrayQueryParameter("symbols", "STRING", symbols)],
             )
-            counts = classify(raw_rows, v1_rows, primary)
-    print(f"     symbols compared row by row: {len(differing)}; categories: {counts or 'none'}")
-    print(f"     primary keys in symbols whose signature matched exactly: {equal_keys:,}")
-    verdicts["latest-wins over raw reproduces v1 (only explained differences)"] = (
-        set(counts) <= ALLOWED
+            counts = classify(raw_rows, v1_rows, primary, fallback, raw_batches)
+    print(
+        f"     symbols with differing signatures: {len(changed)}; "
+        f"compared row by row: {len(symbols)} of {len(raw_sig)}"
     )
+    print(f"     categories: {counts or 'none'}")
+    problems = verdict(counts, rec["allowed_residuals"])
+    for line in problems:
+        print(f"     {line}")
+    verdicts["latest-wins over raw reproduces v1, residuals within measured counts"] = not problems
 
     # 3. reference lists = parquet (newest snapshot)
     ref_ok = True
     for name, path in reference_files(bronze, cfg).items():
-        ref_table = f"{project}.{cfg['dataset']}.{cfg['reference']['table_prefix']}{name}"
-        got = bq_arrow(
-            client,
-            f"""select _file_sha256, count(*) as n from `{ref_table}`
-            group by 1 order by max(_loaded_at) desc limit 1""",
+        ref = f"`{project}.{cfg['dataset']}.{cfg['reference']['table_prefix']}{name}`"
+        got = bq(
+            f"select _file_sha256, count(*) as n from {ref} "
+            "group by 1 order by max(_loaded_at) desc limit 1"
         ).to_pylist()
         want = (sha256_of(path), pq.ParquetFile(path).metadata.num_rows)
         if not got or (got[0]["_file_sha256"], got[0]["n"]) != want:
             ref_ok = False
-            print(
-                f"     {name}: raw {got[:1]} vs file rows {want[1]} (or content changed since load)"
-            )
+            print(f"     {name}: newest snapshot {got[:1]} vs file rows {want[1]}")
     verdicts["reference lists = parquet (newest snapshot)"] = ref_ok
 
-    verdicts["v1's DuckDB file unchanged during the run"] = (
-        duck_path.stat().st_mtime == v1_mtime_before
+    # 4. v1 untouched
+    after = tree_fingerprint([p for p in v1_paths if p.exists()])
+    verdicts["v1's files unchanged during the run (rerun outside 15:00-16:00 if not)"] = (
+        after == before
     )
+
     for name, ok in verdicts.items():
         print(f"{'✅' if ok else '🔴'} {name}")
     return 0 if all(verdicts.values()) else 1
@@ -264,16 +309,23 @@ def run(until: dt.date | None) -> int:
 def self_test() -> int:
     """Known answers on synthetic tables; each planted fault fails exactly its own check."""
     primary, fallback = "vnstock_quote", "vndirect_dchart"
+    modulus = 1009
+    early = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+    late = dt.datetime(2026, 9, 1, tzinfo=dt.UTC)
+    raw_batches = pa.table({"source": [fallback], "_ingested_at": [late]})
 
     def rows(*items: tuple) -> pa.Table:
-        source, symbol, date, close = zip(*items, strict=True)
+        """items: (source, symbol, date, close[, ingested_at])"""
+        items = [i if len(i) == 5 else (*i, late) for i in items]
+        source, symbol, date, close, ingested = zip(*items, strict=True)
         n = len(items)
         return pa.table(
             {
                 "source": list(source),
                 "symbol": list(symbol),
                 "session_date": [dt.date.fromisoformat(d) for d in date],
-                **{c: pa.array([0] * n, pa.int64()) for c in PRICE_COLUMNS if c != "close_vnd"},
+                "_ingested_at": list(ingested),
+                **{c: pa.array([1] * n, pa.int64()) for c in PRICE_COLUMNS if c != "close_vnd"},
                 "close_vnd": pa.array(close, pa.int64()),
             }
         )
@@ -285,45 +337,110 @@ def self_test() -> int:
         (primary, "CCC", "2026-07-31", 70),
         (fallback, "BBB", "2026-07-31", 51),
     )
-    v1 = rows(
+    base = rows(
         (primary, "AAA", "2026-07-30", 100),
         (primary, "AAA", "2026-07-31", 99),
-        (fallback, "BBB", "2026-07-31", 51),  # held by fallback
-        (fallback, "DDD", "2013-01-02", 10),
-    )  # fallback without raw
-    control = classify(raw, v1, primary)
-
-    mismatch = classify(
-        raw, rows((primary, "AAA", "2026-07-30", 100), (primary, "AAA", "2026-07-31", 98)), primary
+        (fallback, "BBB", "2026-07-31", 51),  # held by fallback, equal to raw's fallback
     )
-    missing = classify(
-        raw, rows((primary, "AAA", "2026-07-30", 100), (primary, "EEE", "2026-07-31", 5)), primary
-    )
+    unlogged = rows((fallback, "DDD", "2026-08-04", 10, early))  # its batch is not in raw
+    allowed = {"held_by_fallback": 1, "absent_in_v1": 1, "fallback_batch_not_in_log": 1}
 
-    stats = pa.table(
-        {
-            "_file_name": ["a", "b"],
-            "n": [2, 3],
-            "first_date": [dt.date(2026, 1, 1)] * 2,
-            "last_date": [dt.date(2026, 1, 2)] * 2,
-            **{f"sum_{c}": [10, 20] for c in PRICE_COLUMNS},
-        }
-    )
-    short = stats.set_column(1, "n", pc.cast(pa.array([2, 2]), pa.int64()))
+    def failing(v1: pa.Table) -> list[str]:
+        counts = classify(raw, v1, primary, fallback, raw_batches)
+        return [p.split(":")[0] for p in verdict(counts, allowed)]
 
-    checks = {
-        "control: explained differences only": control
-        == {"equal": 3, "held_by_fallback": 1, "absent_in_v1": 1, "fallback_without_raw": 1},
-        "control passes the allowed-set rule": set(control) <= ALLOWED,
-        "planted price change is a value_mismatch": "value_mismatch" in mismatch,
-        "planted v1 key missing from raw is caught": "v1_key_missing_from_raw" in missing,
-        "file stats: identical tables give no problem": compare_files(stats, stats) == [],
-        "file stats: a short file is reported": len(compare_files(stats, short)) == 1,
-        "file stats: a file missing from raw is reported": len(
-            compare_files(stats, stats.slice(0, 1))
-        )
-        == 1,
+    control = classify(raw, pa.concat_tables([base, unlogged]), primary, fallback, raw_batches)
+    planted = {
+        "price changed in v1": (
+            rows(
+                (primary, "AAA", "2026-07-30", 100),
+                (primary, "AAA", "2026-07-31", 98),
+                (fallback, "BBB", "2026-07-31", 51),
+            ),
+            "value_mismatch",
+        ),
+        "v1 key missing from raw": (
+            pa.concat_tables([base, rows((primary, "EEE", "2026-07-31", 5))]),
+            "v1_key_missing_from_raw",
+        ),
+        "fallback row from a logged batch, no raw": (
+            pa.concat_tables([base, rows((fallback, "FFF", "2026-08-20", 5))]),
+            "fallback_missing_from_raw",
+        ),
+        "row from an unknown source": (
+            pa.concat_tables([base, rows(("legacy_db", "GGG", "2026-08-20", 5))]),
+            "unknown_source",
+        ),
     }
+    checks = {
+        "control: categories exact": control
+        == {
+            "equal": 2,
+            "held_by_fallback": 1,
+            "fallback_equal": 1,
+            "absent_in_v1": 1,
+            "fallback_batch_not_in_log": 1,
+        },
+        "control passes within measured counts": verdict(control, allowed) == [],
+        "an explained category above its measured count fails": verdict(
+            control, {**allowed, "absent_in_v1": 0}
+        )
+        == ["absent_in_v1: 1 > 0 measured"],
+    }
+    for name, (v1, category) in planted.items():
+        checks[f"planted {name}: fails as {category} only"] = failing(v1) == [category]
+
+    # File signatures: a value moved between two dates keeps the plain sums, not the checksum.
+    con = duckdb.connect()
+    sig = signature("duckdb", modulus)
+    con.register("h", rows((primary, "AAA", "2026-07-30", 100), (primary, "AAA", "2026-07-31", 99)))
+    con.register("s", rows((primary, "AAA", "2026-07-30", 99), (primary, "AAA", "2026-07-31", 100)))
+    honest = con.execute(f"select 'f' as _file_name, {sig} from h").to_arrow_table()
+    swapped = con.execute(f"select 'f' as _file_name, {sig} from s").to_arrow_table()
+    doubled = con.execute(
+        f"select 'f' as _file_name, {sig} from (select * from h union all select * from h)"
+    ).to_arrow_table()
+    two_files = pa.concat_tables(
+        [
+            honest,
+            honest.set_column(
+                honest.schema.get_field_index("_file_name"), "_file_name", pa.array(["g"])
+            ),
+        ]
+    )
+    checks["file signatures: identical files give no problem"] = compare_files(honest, honest) == []
+    checks["planted swap of two dates is caught by the weighted checksum"] = (
+        honest["sum_close_vnd"] == swapped["sum_close_vnd"]
+        and len(compare_files(honest, swapped)) == 1
+    )
+    checks["planted file loaded twice is caught"] = len(compare_files(honest, doubled)) == 1
+    checks["planted file missing from raw is caught"] = len(compare_files(two_files, honest)) == 1
+
+    # Latest-wins SQL, run on DuckDB: the newest pull wins and sources stay apart.
+    con.register(
+        "log",
+        pa.table(
+            {
+                "_source_id": [primary, primary, fallback],
+                "symbol": ["AAA"] * 3,
+                "session_date": [dt.date(2026, 7, 31)] * 3,
+                "_ingested_at": [early, late, early],
+                "_ingest_partition": [
+                    dt.date(2026, 8, 3),
+                    dt.date(2026, 8, 7),
+                    dt.date(2026, 8, 3),
+                ],
+                "_file_name": ["a", "b", "c"],
+                **{c: pa.array([1, 2, 3], pa.int64()) for c in PRICE_COLUMNS},
+            }
+        ),
+    )
+    latest = con.execute(latest_sql("log") + " order by source").fetchall()
+    checks["latest-wins keeps the newest pull per source"] = [(r[0], r[-1]) for r in latest] == [
+        (fallback, 3),
+        (primary, 2),
+    ]
+
     checks["an unknown argument is rejected with exit 2"] = (
         subprocess.run(  # noqa: S603
             [sys.executable, __file__, "--bogus"], capture_output=True, timeout=120
@@ -338,19 +455,20 @@ def self_test() -> int:
 def main() -> int:
     utf8_stdio()
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument(
-        "--until-ingest-date",
-        type=dt.date.fromisoformat,
-        help="the cutoff used for the load (YYYY-MM-DD)",
-    )
     parser.add_argument("--self-test", action="store_true", help="run offline known-answer tests")
     args = parser.parse_args()  # rejects unknown arguments with exit code 2
     if args.self_test:
         return self_test()
+    from google.api_core.exceptions import GoogleAPIError
+    from google.auth.exceptions import GoogleAuthError
+
     try:
-        return run(args.until_ingest_date)
-    except (FileNotFoundError, KeyError, ImportError) as exc:
+        return run()
+    except (FileNotFoundError, KeyError, InputError, duckdb.IOException) as exc:
         print(f"⚪ not run: {exc}", file=sys.stderr)
+        return 2
+    except (GoogleAPIError, GoogleAuthError) as exc:
+        print(f"⚪ not run: BigQuery access failed: {exc}", file=sys.stderr)
         return 2
 
 
