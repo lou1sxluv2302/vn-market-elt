@@ -28,8 +28,9 @@ they become the source of progress and this list is retired.
 - [x] Commit the pending docs (folded into the bootstrap commit, 2026-10-13)
 - [x] Research content split into a private companion repo; README rewritten for a portfolio audience (2026-10-13)
 - [x] Security audit before first push (2026-10-13): no secrets; 2 Medium + 4 Low fixed — procedure in `docs/runbooks/security-audit.md`
-- [ ] Push `main` to GitHub (owner go-ahead)
-- [ ] 0.5 Repo security — config done (`.pre-commit-config.yaml`, `tools/secret_scan.py`, Dependabot, `.gitattributes`); left: `pre-commit install`, GitHub push protection
+- [x] Pushed 2026-10-13: public `main`; private companion repo created (visibility verified private) and pushed; Dependabot security updates on
+- [ ] Agent workflow skills (`start-step`, `ship-pr`, `security-audit`, `release`, `harvest-knowledge`) — PR for issue #2
+- [ ] 0.5 Repo security — config done (`.pre-commit-config.yaml`, `tools/secret_scan.py`, Dependabot, `.gitattributes`); left: `pre-commit install` (GitHub secret scanning and push protection verified on)
 - [ ] 0.6 GitHub ruleset, labels, milestones, templates
 - [ ] 0.7 Terraform (agent writes, owner applies)
 - [ ] 0.8 Minimal CI

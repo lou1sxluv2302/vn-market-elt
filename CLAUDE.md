@@ -19,6 +19,7 @@ repository** is **English** (ADR-0014).
 | **Git** — branches, commits, PRs, tags, releases | `CONTRIBUTING.md` |
 | **Infrastructure** — Terraform, VM, deploy | `infra/CLAUDE.md` (loads when working in `infra/`) |
 | **Constants** — thresholds, intervals, schedules | `config/*.yml` |
+| **Workflows** — starting a step, shipping a PR, auditing, releasing, harvesting v1 knowledge | `.claude/skills/`: `start-step` · `ship-pr` · `security-audit` · `release` (owner-invoked) · `harvest-knowledge` |
 
 Directory-specific rules live in a `CLAUDE.md` inside that directory and load
 only when you work there.

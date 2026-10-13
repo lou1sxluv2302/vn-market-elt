@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added (after the bootstrap commit)
+- Agent workflow skills in `.claude/skills/`: `start-step`, `ship-pr`,
+  `security-audit`, `release` (owner-invoked) and `harvest-knowledge` (#2).
+
 ### Added
 - Repository skeleton, English specification, 20 architecture decision records,
   glossary of Vietnamese market terms, engineering rules, domain router,
