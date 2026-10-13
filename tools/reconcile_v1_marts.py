@@ -14,7 +14,10 @@ the same as v1; every deliberate difference explained row by row, by its mechani
      - stale_from_neighbour: same source and values, only `is_stale` differs, and the
        symbol's previous row is a source_choice row (is_stale compares with it);
      - fallback_batch_not_in_log: a v1 row written by a batch that never reached v1's
-       parquet log (P1 measured one, 182 rows), so v2's raw cannot hold it.
+       parquet log (P1 measured one, 182 rows), so v2's raw cannot hold it;
+     - dropped_after_neighbour_source_change: only v1 has it, from the primary, and the
+       symbol's previous row is a source_choice row. That neighbour changes is_stale, and
+       a non-stale row whose open lies outside [low, high] is dropped (v1's rule).
    Anything else - a row only v1 has, a row v2 kept that v1's raw table had, a value
    difference on the same source - fails.
 3. exchange: `dim_security` against v1's `dim_security_v2`; may differ only for a
@@ -57,6 +60,7 @@ PRICE_EXPLAINED = {
     "absent_in_v1",
     "stale_from_neighbour",
     "fallback_batch_not_in_log",
+    "dropped_after_neighbour_source_change",
 }
 
 
@@ -160,6 +164,7 @@ def classify_prices(
                         then 'absent_in_v1'
                     when v2.symbol is not null and v1.symbol is not null and {same_but_stale}
                         then 'stale_only'
+                    when v2.symbol is null and v1.source = '{primary}' then 'v1_only_primary'
                     else 'unexplained'
                 end as category
             from v2 full join v1 on v2.symbol = v1.symbol and v2.trade_date = v1.trade_date
@@ -177,6 +182,9 @@ def classify_prices(
                 when category = 'stale_only' and previous = 'source_choice'
                     then 'stale_from_neighbour'
                 when category = 'stale_only' then 'unexplained'
+                when category = 'v1_only_primary' and previous = 'source_choice'
+                    then 'dropped_after_neighbour_source_change'
+                when category = 'v1_only_primary' then 'unexplained'
                 else category
             end as category
         from with_previous
@@ -383,7 +391,7 @@ def run(cfg: dict, env: dict) -> int:
         explained_keys = con.execute(
             "select symbol, trade_date from k where category in "
             "('source_choice', 'absent_in_v1', 'stale_from_neighbour', "
-            "'fallback_batch_not_in_log')"
+            "'fallback_batch_not_in_log', 'dropped_after_neighbour_source_change')"
         ).to_arrow_table()
         price_explained = {r["symbol"] for r in explained_keys.to_pylist()}
 
@@ -527,6 +535,13 @@ def self_test() -> int:
         return v1_extra.append_column("ingested_at", pa.array([earlier, when]))
 
     unlogged_row = classes(one_a, stamped(batch), raw)
+    # ABR 2019-08-22: the day before came from the fallback in v2, so v2's row is not
+    # stale, its open lies outside [low, high] and it is dropped; v1 kept it as stale.
+    neighbour_drop = classes(
+        prices(("J", "2019-08-21", 13273, f)),
+        prices(("J", "2019-08-21", 15000, p), ("J", "2019-08-22", 15000, p, 1)),
+        keys(("J", "2019-08-21"), ("J", "2019-08-22")),
+    )
     logged_row = classes(one_a, stamped(dt.datetime(2026, 8, 18, tzinfo=dt.UTC)), raw)
 
     def cal(rows: list) -> pa.Table:
@@ -619,6 +634,8 @@ def self_test() -> int:
         == {"equal": 1, "fallback_batch_not_in_log": 1},
         "planted: the same row from a logged batch - unexplained": logged_row
         == {"equal": 1, "unexplained": 1},
+        "a v1-only primary row after a source change is explained": neighbour_drop
+        == {"source_choice": 1, "dropped_after_neighbour_source_change": 1},
         "control calendar": cal_control
         == {"observed_equal": 1, "holiday_seed": 1, "rule_equal": 1},
         "planted calendar: observed range moved, days on one side only": cal_planted
