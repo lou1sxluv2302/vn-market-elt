@@ -29,3 +29,4 @@ Decisions D1-D24 (ADR-0025 supersedes ADR-0015) of [`../spec.md`](../spec.md), o
 | [0023](0023-stock-selection-research-before-streaming.md) | Stock-selection research before streaming, in a private repository |
 | [0024](0024-keep-research-discipline.md) | Keep research discipline |
 | [0025](0025-project-language-lives-in-context-md.md) | The project's language lives in CONTEXT.md (supersedes 0015) |
+| [0026](0026-a-measured-palette-not-v1-colours.md) | A measured v2 palette, not v1's colours |

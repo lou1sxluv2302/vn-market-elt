@@ -18,7 +18,7 @@ they become the source of progress and this list is retired.
 **K0 - Knowledge harvest**
 - [x] K0.1 Inventory of v1's knowledge base - approved 2026-10-08 (kept in the private research repo)
 - [x] K0.2 Foundation translated - `market-microstructure.md`, `data-sources.md`, `data-quality-lessons.md`; `engineering-rules.md` rewritten (33 rules); glossary +32 terms
-- [ ] K0.3 Indicators, flows, BI conventions (research findings go to the private repo)
+- [x] K0.3 Indicators, flows, BI conventions - `indicators.md`, `flows.md`, `bi-conventions.md` and a measured v2 palette (#12); research findings stay in the private repo
 
 **P0 - Foundations**
 - [x] 0.1 Repository skeleton, English spec, ADRs, glossary, knowledge harvest - all in the bootstrap commit on `main` (2026-10-13), local only
