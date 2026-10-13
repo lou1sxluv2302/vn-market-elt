@@ -14,12 +14,9 @@ with priced as (
 select
     p.*,
     (p.match_qty = 0 and p.close_vnd = p.prev_close_vnd) as is_stale,
-    (p.close_vnd is null or p.open_vnd is null or p.high_vnd is null or p.low_vnd is null)
-        as is_bad_null,
-    (p.close_vnd <= 0) as is_bad_nonpositive,
-    -- low > high is implied by the other two terms; kept so the formula reads as v1's.
-    (p.low_vnd > p.high_vnd or p.close_vnd < p.low_vnd or p.close_vnd > p.high_vnd)
-        as is_bad_ohlc,
+    {{ is_bad_null('p.') }} as is_bad_null,
+    {{ is_bad_nonpositive('p.') }} as is_bad_nonpositive,
+    {{ is_bad_ohlc('p.') }} as is_bad_ohlc,
     (b.bad_date is not null) as is_bad_known_date,
     (p.open_vnd < p.low_vnd or p.open_vnd > p.high_vnd) as is_open_outside_range
 from priced as p

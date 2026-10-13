@@ -47,6 +47,10 @@ reconcile_v1:
   # Position weight for the per-symbol checksum: a value moved between two dates,
   # or +x on one date and -x on another, changes the weighted sum.
   checksum_modulus: 1009
+  marts_dataset: marts_daily   # read by tools/reconcile_v1_marts.py as sa-bi-reader
+  adv_window_rows: 20          # the dbt var of the same name: rows an ADV reads
+  # v1 batches that wrote rows but never reached v1's parquet log (P1, measured 2026-10-13)
+  unlogged_v1_batches: ["2026-08-06T04:40:36.043644+00:00"]
 
 # Column-name prefixes BigQuery refuses, case-insensitive (its error message and
 # "Column names" in the BigQuery docs). Checked before loading, because a local

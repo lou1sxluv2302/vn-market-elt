@@ -31,3 +31,4 @@ Decisions D1-D24 (ADR-0025 supersedes ADR-0015) of [`../spec.md`](../spec.md), o
 | [0025](0025-project-language-lives-in-context-md.md) | The project's language lives in CONTEXT.md (supersedes 0015) |
 | [0026](0026-a-measured-palette-not-v1-colours.md) | A measured v2 palette, not v1's colours |
 | [0027](0027-foundation-now-vm-at-s0.md) | Cloud foundation now, collector VM at S0; buckets in us-central1 |
+| [0028](0028-p2-reconciliation-and-provisional-thresholds.md) | P2: reconcile by mechanism; v1's liquidity rules kept as provisional config |

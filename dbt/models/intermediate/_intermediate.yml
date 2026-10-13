@@ -56,6 +56,30 @@ unit_tests:
         - {_source_id: a_primary, symbol: AAA, trade_date: 2026-07-31, close_vnd: 100}
         - {_source_id: z_fallback, symbol: BBB, trade_date: 2026-07-31, close_vnd: 50}
 
+  - name: clean_fallback_beats_broken_primary
+    description: >
+      A primary row the structural checks reject loses to a clean fallback row (GMX on
+      2013-11-22: close below low); when both are broken the primary stays.
+    model: int_prices__chosen_source
+    overrides:
+      vars:
+        primary_price_source: p
+        fallback_price_source: f
+    given:
+      - input: ref('stg_vnstock__ohlcv_daily')
+        rows:
+          - {_source_id: p, symbol: GMX, trade_date: 2013-11-22, open_vnd: 1930, high_vnd: 1930, low_vnd: 1930, close_vnd: 1770}
+          - {_source_id: f, symbol: GMX, trade_date: 2013-11-22, open_vnd: 1884, high_vnd: 1884, low_vnd: 1739, close_vnd: 1739}
+          - {_source_id: p, symbol: BOTH, trade_date: 2013-11-22, open_vnd: 10, high_vnd: 10, low_vnd: 10, close_vnd: 0}
+          - {_source_id: f, symbol: BOTH, trade_date: 2013-11-22, open_vnd: null, high_vnd: 10, low_vnd: 10, close_vnd: 10}
+          - {_source_id: p, symbol: OK, trade_date: 2013-11-22, open_vnd: 10, high_vnd: 10, low_vnd: 10, close_vnd: 10}
+          - {_source_id: f, symbol: OK, trade_date: 2013-11-22, open_vnd: 11, high_vnd: 11, low_vnd: 11, close_vnd: 11}
+    expect:
+      rows:
+        - {_source_id: f, symbol: GMX, trade_date: 2013-11-22, close_vnd: 1739}
+        - {_source_id: p, symbol: BOTH, trade_date: 2013-11-22, close_vnd: 0}
+        - {_source_id: p, symbol: OK, trade_date: 2013-11-22, close_vnd: 10}
+
   - name: stale_is_no_trade_with_the_previous_close
     description: >
       Stale needs both no trade and the same close as the symbol's previous row; the first

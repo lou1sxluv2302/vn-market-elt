@@ -177,6 +177,14 @@ _Avoid_: gainers/losers, breadth % (unqualified)
 The difference of a 19- and a 39-session EMA of advancing minus declining symbols.
 _Avoid_: breadth momentum (unqualified)
 
+**Liquidity tier** (`liquidity_tier`) · _hạng thanh khoản_:
+ADV20 bucket: HIGH, MEDIUM, LOW, REJECT, or INSUFFICIENT when the window has too few rows; thresholds are provisional.
+_Avoid_: liquidity score
+
+**Universe exclusion reason** (`exclusion_reason`) · _lý do loại khỏi universe_:
+The first rule a row fails: exchange out of scope, stale, insufficient history, below the liquidity floor; null when in.
+_Avoid_: filter flag
+
 **Ceiling/floor spread** (`ceiling_floor_spread_ratio`) · _chênh lệch trần/sàn_:
 Ceiling count minus floor count over the active symbol count, from the feed's ceiling and floor prices.
 _Avoid_: ceiling/floor count as a threshold
@@ -193,6 +201,10 @@ _Avoid_: missing session, holiday
 **Universe** (`is_in_universe`) · _universe tại thời điểm_:
 The securities eligible on a given session, decided only from earlier data.
 _Avoid_: watchlist, today's top N
+
+**Inferred exchange** (`exchange_is_inferred`) · _sàn suy ra_:
+An exchange guessed from price ticks for a delisted symbol whose list entry lost it; unreliable on adjusted prices.
+_Avoid_: exchange (unqualified) for these symbols
 
 **Listing status** (`listing_status`, `delisted_date`) · _trạng thái niêm yết_:
 Listed or delisted; delisted securities stay in history.

@@ -7,6 +7,24 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- dbt marts (P2 part 2, #20, ADR-0028): `dim_trading_calendar` (observed history, weekdays
+  minus seeded holidays after it, sessions per month), `dim_security` (SCD2 exchange; the
+  HNX→HOSE move; tick-inferred exchange for delisted symbols, flagged),
+  `fct_price_daily` (v1's drop rules; exchange, tick and band of the trade date),
+  `fct_liquidity_daily` (ADV20 over previous non-stale rows, provisional tiers),
+  `fct_universe_daily` (flag and first exclusion reason). Portable date macros; six new
+  unit tests, every mutant of the key rules caught.
+- `tools/reconcile_v1_marts.py`: marts against v1, every difference explained row by row
+  by its mechanism (holiday seed, source choice and its effect on `is_stale` and ADV
+  windows, inferred exchange); anything else fails. Reads marts as `sa-bi-reader`.
+- `tools/check_seeds_vs_knowledge.py`: tick sizes, normal bands and holidays in the seeds
+  agree with `market-microstructure.md`; run in `ci / lint`.
+- Source choice prefers a clean row: the primary's, else the fallback's, else the primary's
+  broken one (found by reconciliation: GMX 2013-11-22, primary close below its low, was lost
+  while the fallback row was clean). The bad-row checks live in one macro.
+  Cost, measured: 26 primary rows of 11 symbols (2019-2021) that v1 kept as stale are
+  dropped, because the clean fallback day before makes them non-stale with the open
+  outside [low, high]; the reconciler names this `dropped_after_neighbour_source_change`.
 - dbt project (P2 part 1, #20): market-rule seeds with effective dates and sources
   (tick size, price band, holidays incl. 2026-11-24 and provisional 2027, exchange
   aliases, the HNX→HOSE move, known bad dates); staging latest-wins over the raw log;

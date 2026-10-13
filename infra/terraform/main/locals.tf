@@ -24,7 +24,7 @@ locals {
   service_accounts = {
     "sa-collector" = "Collector on the VM: writes raw stream batches."
     "sa-dbt"       = "dbt runs: reads raw, writes staging, intermediate and marts."
-    "sa-bi-reader" = "Reserved for a future BI tool: reads marts only."
+    "sa-bi-reader" = "Reads marts only: reconciliation now, a BI tool later."
     "sa-loader"    = "dlt loads: writes raw_vnstock only (owner impersonates it)."
     "sa-ci-plan"   = "GitHub Actions through WIF: read-only, enough for terraform plan."
   }

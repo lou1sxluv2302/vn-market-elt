@@ -1,0 +1,261 @@
+version: 2
+
+models:
+  - name: dim_trading_calendar
+    description: One row per calendar day; sessions observed in history, weekdays minus holidays after.
+    columns:
+      - name: calendar_date
+        data_tests: [unique, not_null]
+      - name: session_seq
+        data_tests: [unique]
+
+  - name: dim_security
+    description: >
+      Symbol and exchange per effective period (SCD2). Known gap: no listing or delisting
+      dates (ADR-0028).
+    columns:
+      - name: symbol
+        data_tests: [not_null]
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, effective_from]
+
+  - name: fct_price_daily
+    description: Clean daily prices with exchange, tick and band of the trade date.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, trade_date]
+    columns:
+      - name: symbol
+        data_tests: [not_null]
+      - name: session_seq
+        data_tests: [not_null]
+
+  - name: fct_liquidity_daily
+    description: ADV20 over the previous non-stale rows and the liquidity tier.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, trade_date]
+    columns:
+      - name: symbol
+        data_tests: [not_null]
+      - name: liquidity_tier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [HIGH, MEDIUM, LOW, REJECT, INSUFFICIENT]
+
+  - name: fct_universe_daily
+    description: Point-in-time universe flag and the first reason a row is out.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, trade_date]
+    columns:
+      - name: symbol
+        data_tests: [not_null]
+      - name: is_in_universe
+        data_tests: [not_null]
+
+unit_tests:
+  - name: calendar_observed_history_then_rule
+    description: >
+      Inside the observed range a day is a session only with >= 3 traded symbols (threshold
+      overridden to 3); a weekday below it is not. After the range: weekdays minus seeded
+      holidays (2026-11-24 a holiday, so not a session). Sessions are numbered gap-free.
+    model: dim_trading_calendar
+    overrides:
+      vars:
+        min_traded_symbols_per_session: 3
+        calendar_first_date: "2026-11-19"
+        calendar_last_date: "2026-11-25"
+    given:
+      - input: ref('int_prices__flagged')
+        rows:
+          - {symbol: A, trade_date: 2026-11-19, match_qty: 1}
+          - {symbol: B, trade_date: 2026-11-19, match_qty: 1}
+          - {symbol: C, trade_date: 2026-11-19, match_qty: 1}
+          - {symbol: A, trade_date: 2026-11-20, match_qty: 1}
+          - {symbol: B, trade_date: 2026-11-20, match_qty: 0}
+          - {symbol: C, trade_date: 2026-11-20, match_qty: 1}
+          - {symbol: A, trade_date: 2026-11-23, match_qty: 1}
+          - {symbol: B, trade_date: 2026-11-23, match_qty: 1}
+          - {symbol: C, trade_date: 2026-11-23, match_qty: 1}
+      - input: ref('holidays')
+        rows:
+          - {holiday_date: 2026-11-24, status: announced, occasion: culture_day}
+    expect:
+      rows:
+        - {calendar_date: 2026-11-19, is_trading_day: true, calendar_source: observed, session_seq: 1}
+        - {calendar_date: 2026-11-20, is_trading_day: false, calendar_source: observed, session_seq: null}
+        - {calendar_date: 2026-11-21, is_trading_day: false, calendar_source: observed, session_seq: null}
+        - {calendar_date: 2026-11-22, is_trading_day: false, calendar_source: observed, session_seq: null}
+        - {calendar_date: 2026-11-23, is_trading_day: true, calendar_source: observed, session_seq: 2}
+        - {calendar_date: 2026-11-24, is_trading_day: false, calendar_source: rule, session_seq: null}
+        - {calendar_date: 2026-11-25, is_trading_day: true, calendar_source: rule, session_seq: 3}
+
+  - name: calendar_year_end_keys
+    description: >
+      Across a year end with a holiday: the last session of December closes the month
+      and the quarter, ISO weeks stay in the old ISO year, sessions are counted per month.
+    model: dim_trading_calendar
+    overrides:
+      vars:
+        min_traded_symbols_per_session: 99
+        calendar_first_date: "2026-12-30"
+        calendar_last_date: "2027-01-04"
+    given:
+      - input: ref('int_prices__flagged')
+        rows:
+          - {symbol: A, trade_date: 2026-12-30, match_qty: 1}
+      - input: ref('holidays')
+        rows:
+          - {holiday_date: 2027-01-01, status: provisional, occasion: new_year}
+    expect:
+      rows:
+        - {calendar_date: 2026-12-30, is_trading_day: true, trading_week_id: 202653, is_month_end_session: false, is_quarter_end_session: false, month_session_count: 2}
+        - {calendar_date: 2026-12-31, is_trading_day: true, trading_week_id: 202653, is_month_end_session: true, is_quarter_end_session: true, month_session_count: 2}
+        - {calendar_date: 2027-01-01, is_trading_day: false, trading_week_id: 202653, is_month_end_session: false, is_quarter_end_session: false, month_session_count: 1}
+        - {calendar_date: 2027-01-02, is_trading_day: false, trading_week_id: 202653, is_month_end_session: false, is_quarter_end_session: false, month_session_count: 1}
+        - {calendar_date: 2027-01-03, is_trading_day: false, trading_week_id: 202653, is_month_end_session: false, is_quarter_end_session: false, month_session_count: 1}
+        - {calendar_date: 2027-01-04, is_trading_day: true, trading_week_id: 202701, is_month_end_session: true, is_quarter_end_session: true, month_session_count: 1}
+
+  - name: delisted_exchange_inferred_and_announced_move_splits
+    description: >
+      A listed HNX stock gets two periods split at the move date; a delisted symbol takes
+      the tick-inferred exchange (all low prices multiples of 100: HNX) and keeps one period;
+      a delisted symbol with too few prices to infer from has no exchange.
+    model: dim_security
+    overrides:
+      vars:
+        exchange_inference_min_rows: 2
+    given:
+      - input: ref('int_prices__flagged')
+        rows:
+          - {symbol: HNXA, close_vnd: 9000}
+          - {symbol: DEAD, close_vnd: 9100}
+          - {symbol: DEAD, close_vnd: 9200}
+          - {symbol: HOSEA, close_vnd: 9010}
+          - {symbol: THIN, close_vnd: 9300}
+          - {symbol: GONE, close_vnd: 9400}
+          - {symbol: GONE, close_vnd: 9500}
+      - input: ref('stg_vnstock__symbols')
+        rows:
+          - {symbol: HNXA, exchange: HNX, is_delisted: false, instrument_type: STOCK}
+          - {symbol: DEAD, exchange: null, is_delisted: true, instrument_type: STOCK}
+          - {symbol: HOSEA, exchange: HOSE, is_delisted: false, instrument_type: STOCK}
+          - {symbol: THIN, exchange: null, is_delisted: true, instrument_type: STOCK}
+      - input: ref('exchange_changes')
+        rows:
+          - {from_exchange: HNX, to_exchange: HOSE, effective_from: 2026-12-28, effective_to: null, applies_to: every_listed_stock}
+      - input: ref('exchange_alias')
+        rows:
+          - {source_value: HOSE, is_in_scope: true}
+          - {source_value: HNX, is_in_scope: true}
+    expect:
+      rows:
+        - {symbol: HNXA, exchange: HNX, effective_from: null, effective_to: 2026-12-28, exchange_is_inferred: false}
+        - {symbol: HNXA, exchange: HOSE, effective_from: 2026-12-28, effective_to: null, exchange_is_inferred: false}
+        - {symbol: DEAD, exchange: HNX, effective_from: null, effective_to: null, exchange_is_inferred: true}
+        - {symbol: HOSEA, exchange: HOSE, effective_from: null, effective_to: null, exchange_is_inferred: false}
+        - {symbol: THIN, exchange: null, effective_from: null, effective_to: null, exchange_is_inferred: false}
+        - {symbol: GONE, exchange: HNX, effective_from: null, effective_to: null, exchange_is_inferred: true}
+
+  - name: price_rows_dropped_as_v1
+    description: >
+      Kept: a clean row, a stale row (forced O=H=L=C). Dropped: a non-stale row with a bad
+      open, a null-stale row with a bad open (three-valued, as v1), a weekend row, a row
+      after the last observed session. Exchange is the one valid on the trade date.
+    model: fct_price_daily
+    given:
+      - input: ref('int_prices__flagged')
+        rows:
+          - {symbol: OK, trade_date: 2026-12-24, open_vnd: 10000, high_vnd: 10200, low_vnd: 9900, close_vnd: 10100, match_qty: 5, is_stale: false, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: false}
+          - {symbol: OK, trade_date: 2026-12-28, open_vnd: 10000, high_vnd: 10200, low_vnd: 9900, close_vnd: 10100, match_qty: 0, is_stale: true, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: false}
+          - {symbol: BADOPEN, trade_date: 2026-12-24, open_vnd: 20000, high_vnd: 10200, low_vnd: 9900, close_vnd: 10100, match_qty: 5, is_stale: false, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: true}
+          - {symbol: NULLSTALE, trade_date: 2026-12-24, open_vnd: 20000, high_vnd: 10200, low_vnd: 9900, close_vnd: 10100, match_qty: 0, is_stale: null, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: true}
+          - {symbol: NULLOK, trade_date: 2026-12-24, open_vnd: 10000, high_vnd: 10200, low_vnd: 9900, close_vnd: 10100, match_qty: 0, is_stale: null, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: false}
+          - {symbol: WEEKEND, trade_date: 2026-12-26, open_vnd: 10000, high_vnd: 10200, low_vnd: 9900, close_vnd: 10100, match_qty: 5, is_stale: false, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: false}
+          - {symbol: LATE, trade_date: 2026-12-29, open_vnd: 10000, high_vnd: 10200, low_vnd: 9900, close_vnd: 10100, match_qty: 5, is_stale: false, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: false}
+      - input: ref('dim_trading_calendar')
+        rows:
+          - {calendar_date: 2026-12-24, is_trading_day: true, calendar_source: observed, session_seq: 1}
+          - {calendar_date: 2026-12-26, is_trading_day: false, calendar_source: observed, session_seq: null}
+          - {calendar_date: 2026-12-28, is_trading_day: true, calendar_source: observed, session_seq: 2}
+          - {calendar_date: 2026-12-29, is_trading_day: true, calendar_source: rule, session_seq: 3}
+      - input: ref('dim_security')
+        rows:
+          - {symbol: OK, exchange: HNX, is_in_scope: true, effective_from: null, effective_to: 2026-12-28}
+          - {symbol: OK, exchange: HOSE, is_in_scope: true, effective_from: 2026-12-28, effective_to: null}
+          - {symbol: NULLOK, exchange: HOSE, is_in_scope: true, effective_from: null, effective_to: null}
+      - input: ref('tick_size')
+        rows:
+          - {exchange: HNX, instrument_class: stock, price_from_vnd: 0, tick_vnd: 100}
+          - {exchange: HOSE, instrument_class: stock, price_from_vnd: 0, tick_vnd: 10}
+          - {exchange: HOSE, instrument_class: stock, price_from_vnd: 10000, tick_vnd: 50}
+      - input: ref('price_band')
+        rows:
+          - {exchange: HNX, band_case: normal, band_ratio: 0.10}
+          - {exchange: HOSE, band_case: normal, band_ratio: 0.07}
+    expect:
+      rows:
+        - {symbol: OK, trade_date: 2026-12-24, exchange: HNX, open_vnd: 10000, low_vnd: 9900, tick_vnd: 100, price_band_ratio: 0.10, session_seq: 1}
+        - {symbol: OK, trade_date: 2026-12-28, exchange: HOSE, open_vnd: 10100, low_vnd: 10100, tick_vnd: 50, price_band_ratio: 0.07, session_seq: 2}
+        - {symbol: NULLOK, trade_date: 2026-12-24, exchange: HOSE, open_vnd: 10000, low_vnd: 9900, tick_vnd: 50, price_band_ratio: 0.07, session_seq: 1}
+
+  - name: adv_uses_previous_non_stale_rows_only
+    description: >
+      Window of 2 previous rows (overridden), min 2: the first two rows are insufficient,
+      the current row never counts; stale rows are skipped, not counted as zero.
+    model: fct_liquidity_daily
+    overrides:
+      vars:
+        adv_window_rows: 2
+        adv_min_rows: 2
+        liquidity_tier_high_vnd: 300
+        liquidity_tier_medium_vnd: 200
+        liquidity_tier_low_vnd: 100
+    given:
+      - input: ref('fct_price_daily')
+        rows:
+          - {symbol: A, trade_date: 2026-01-05, session_seq: 1, turnover_vnd: 100, is_stale: false}
+          - {symbol: A, trade_date: 2026-01-06, session_seq: 2, turnover_vnd: 300, is_stale: false}
+          - {symbol: A, trade_date: 2026-01-07, session_seq: 3, turnover_vnd: 0, is_stale: true}
+          - {symbol: A, trade_date: 2026-01-08, session_seq: 4, turnover_vnd: 9999, is_stale: false}
+          - {symbol: A, trade_date: 2026-01-09, session_seq: 5, turnover_vnd: 50, is_stale: false}
+    expect:
+      rows:
+        - {symbol: A, trade_date: 2026-01-05, adv_rows: 0, adv_20d_vnd: null, liquidity_tier: INSUFFICIENT}
+        - {symbol: A, trade_date: 2026-01-06, adv_rows: 1, adv_20d_vnd: 100, liquidity_tier: INSUFFICIENT}
+        - {symbol: A, trade_date: 2026-01-08, adv_rows: 2, adv_20d_vnd: 200, liquidity_tier: MEDIUM}
+        - {symbol: A, trade_date: 2026-01-09, adv_rows: 2, adv_20d_vnd: 5149.5, liquidity_tier: HIGH}
+
+  - name: universe_reasons
+    description: Each planted row is out for exactly its own reason; the control row is in.
+    model: fct_universe_daily
+    given:
+      - input: ref('fct_price_daily')
+        rows:
+          - {symbol: IN, trade_date: 2026-01-08, is_in_scope: true, is_stale: false}
+          - {symbol: UPC, trade_date: 2026-01-08, is_in_scope: false, is_stale: false}
+          - {symbol: STL, trade_date: 2026-01-08, is_in_scope: true, is_stale: true}
+          - {symbol: NUL, trade_date: 2026-01-08, is_in_scope: true, is_stale: null}
+          - {symbol: NEW, trade_date: 2026-01-08, is_in_scope: true, is_stale: false}
+          - {symbol: THN, trade_date: 2026-01-08, is_in_scope: true, is_stale: false}
+      - input: ref('fct_liquidity_daily')
+        rows:
+          - {symbol: IN, trade_date: 2026-01-08, liquidity_tier: LOW}
+          - {symbol: UPC, trade_date: 2026-01-08, liquidity_tier: HIGH}
+          - {symbol: NEW, trade_date: 2026-01-08, liquidity_tier: INSUFFICIENT}
+          - {symbol: THN, trade_date: 2026-01-08, liquidity_tier: REJECT}
+    expect:
+      rows:
+        - {symbol: IN, is_in_universe: true, exclusion_reason: null}
+        - {symbol: UPC, is_in_universe: false, exclusion_reason: exchange_out_of_scope}
+        - {symbol: STL, is_in_universe: false, exclusion_reason: stale}
+        - {symbol: NUL, is_in_universe: false, exclusion_reason: stale}
+        - {symbol: NEW, is_in_universe: false, exclusion_reason: insufficient_history}
+        - {symbol: THN, is_in_universe: false, exclusion_reason: below_liquidity_floor}
