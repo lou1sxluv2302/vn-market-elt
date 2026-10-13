@@ -44,5 +44,11 @@ Sequence only. Rules: `CONTRIBUTING.md` (commits, PRs), `docs/engineering-rules.
 6. **Hand over the push.** Give the owner the summary, the check table and the exact command, `git push -u origin <branch>`. Agents cannot push (`CONTRIBUTING.md`, Agent tooling).
    Done when the owner reports the push done.
 
-7. **Open the PR** with `gh pr create`, template filled; "How verified" is the check table. Merging is the owner's decision (squash only).
-   Done when the PR URL is reported.
+7. **Open the PR.** `gh pr create --body-file` skips GitHub's template, so build the body from it:
+   - copy `.github/pull_request_template.md` to a scratch file and fill every section; keep each heading, write "None." where nothing applies;
+   - the title is the squash commit (`CONTRIBUTING.md`, Commits); `Refs: #<issue>`, or `Closes #<issue>` when the PR finishes it;
+   - "How verified" is the check table from step 2; "Deviations" lists every review finding answered rather than fixed (step 4);
+   - add the milestone of the phase and the `type:*` / `area:*` labels.
+
+   Merging is the owner's decision (squash only).
+   Done when the PR URL is reported and its body has every heading of the template.

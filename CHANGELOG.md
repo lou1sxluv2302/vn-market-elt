@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Knowledge K0.3 (#12): `indicators.md`, `flows.md`, `bi-conventions.md`; 26 new
+  terms in `CONTEXT.md`.
+- A measured v2 palette (ADR-0026): `config/palette.yml` for light and dark themes,
+  `tools/check_palette.py` (WCAG contrast, CIEDE2000 under simulated colour-vision
+  deficiency, OKLCH chroma; self-tested against published values), run in CI; the
+  research basis in `docs/design/colour-and-ux-research.md`.
 - CI (#9): `ci` workflow (lint, self-test) and `security` workflow (gitleaks over
   full history, secret scan, data-file block, pip-audit; weekly run that also reports
   outdated hook releases). Actions pinned

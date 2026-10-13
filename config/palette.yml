@@ -1,0 +1,116 @@
+# v2 colour palette - the only place colour values live.
+# Rules, reasons and sources: docs/knowledge/bi-conventions.md §4.
+# Measured by tools/check_palette.py (CI runs its self-test; run it on this file
+# after any change). Values were chosen in OKLCH; the comment on each line is
+# its oklch(L, C, h). Up/down use bluish green and vermilion-leaning red, split
+# in lightness, so the pair stays apart under red-green colour-vision deficiency.
+
+themes:
+  light:
+    # Surfaces and text
+    background: "#FFFFFF"  # oklch(1.00 0.000 90)
+    surface: "#F4F6F8"  # oklch(0.97 0.003 248)
+    text: "#1C2128"  # oklch(0.25 0.015 257)
+    text_muted: "#59616C"  # oklch(0.49 0.020 256)
+    text_on_strong: "#FFFFFF"  # oklch(1.00 0.000 90)
+    # Price-board roles (VN convention: up green, down red, ceiling purple, floor cyan, reference amber)
+    up: "#067F5C"  # oklch(0.53 0.109 165)
+    down: "#B00326"  # oklch(0.48 0.192 22)
+    ceiling: "#8E47CD"  # oklch(0.55 0.200 305)
+    floor: "#017A9B"  # oklch(0.54 0.102 225)
+    reference: "#9D6304"  # oklch(0.55 0.118 70)
+    # Diverging heat scale: two steps per hue, neutral midpoint
+    down_strong: "#B00326"  # oklch(0.48 0.192 22)
+    down_weak: "#FFCEBD"  # oklch(0.89 0.060 40)
+    neutral: "#E9EBEE"  # oklch(0.94 0.005 258)
+    up_weak: "#BBF2E2"  # oklch(0.92 0.060 175)
+    up_strong: "#067F5C"  # oklch(0.53 0.109 165)
+    # Categorical series (never for price meaning)
+    cat_1: "#2961CE"  # oklch(0.52 0.179 262)
+    cat_2: "#E37725"  # oklch(0.68 0.160 52)
+    cat_3: "#C13480"  # oklch(0.56 0.190 352)
+    cat_4: "#5D7B05"  # oklch(0.54 0.134 125)
+    cat_5: "#444E5B"  # oklch(0.42 0.025 255)
+  dark:
+    # Surfaces and text
+    background: "#121417"  # oklch(0.19 0.007 258)
+    surface: "#1B1F24"  # oklch(0.24 0.011 254)
+    text: "#E6E8EB"  # oklch(0.93 0.005 258)
+    text_muted: "#A2AAB4"  # oklch(0.73 0.017 254)
+    text_on_strong: "#F5F6F7"  # oklch(0.97 0.002 248)
+    # Price-board roles (VN convention: up green, down red, ceiling purple, floor cyan, reference amber)
+    up: "#40CD9B"  # oklch(0.76 0.140 165)
+    down: "#EF675C"  # oklch(0.68 0.170 27)
+    ceiling: "#A36FD9"  # oklch(0.64 0.160 305)
+    floor: "#5EC6EC"  # oklch(0.78 0.110 225)
+    reference: "#E0AE57"  # oklch(0.78 0.120 79)
+    # Diverging heat scale: two steps per hue, neutral midpoint
+    down_strong: "#8C2D28"  # oklch(0.44 0.130 27)
+    down_weak: "#4A2010"  # oklch(0.30 0.069 41)
+    neutral: "#232426"  # oklch(0.26 0.004 264)
+    up_weak: "#003F33"  # oklch(0.33 0.062 175)
+    up_strong: "#016246"  # oklch(0.44 0.092 165)
+    # Categorical series (never for price meaning)
+    cat_1: "#6A9CFB"  # oklch(0.70 0.150 262)
+    cat_2: "#FEB98F"  # oklch(0.84 0.098 52)
+    cat_3: "#EE76AF"  # oklch(0.72 0.160 352)
+    cat_4: "#88AF2A"  # oklch(0.70 0.160 125)
+    cat_5: "#7C8795"  # oklch(0.62 0.025 254)
+
+# Each rule runs on every theme. `min`/`max` thresholds come from the cited source;
+# where the source gives none, the value is a starting point marked "calibrate".
+rules:
+  - name: body text contrast
+    kind: contrast
+    fg: [text, text_muted]
+    bg: [background, surface]
+    min: 4.5  # WCAG 2.2 SC 1.4.3
+  - name: price-role colours readable as text
+    kind: contrast
+    fg: [up, down, ceiling, floor, reference]
+    bg: [background, surface]
+    min: 4.5  # price boards print coloured numbers: text rule, stricter than SC 1.4.11 (3:1)
+  - name: categorical marks against the background
+    kind: contrast
+    fg: [cat_1, cat_2, cat_3, cat_4, cat_5]
+    bg: [background]
+    min: 3.0  # WCAG 2.2 SC 1.4.11, non-text contrast
+  - name: text inside weak heat cells
+    kind: contrast
+    fg: [text]
+    bg: [up_weak, down_weak, neutral]
+    min: 4.5  # WCAG 2.2 SC 1.4.3
+  - name: text inside strong heat cells
+    kind: contrast
+    fg: [text_on_strong]
+    bg: [up_strong, down_strong]
+    min: 4.5  # WCAG 2.2 SC 1.4.3
+  - name: up vs down, every vision type
+    kind: distance
+    pairs: [[up, down], [up_strong, down_strong]]
+    vision: [normal, deuteranopia, protanopia, tritanopia]
+    min: 8  # CIEDE2000 under Machado 2009 severity 1.0; 8 = target (v1 measurement practice)
+  - name: weak heat steps apart, with secondary encodings
+    kind: distance
+    pairs: [[up_weak, down_weak]]
+    vision: [normal, deuteranopia, protanopia]
+    min: 6  # floor valid only because glyph, sign and edge mark are mandatory on heat cells
+  - name: up vs down in normal vision
+    kind: distance
+    pairs: [[up, down]]
+    vision: [normal]
+    min: 20  # calibrate: starting point from the colour research note
+  - name: five price-board states apart
+    kind: distance_all
+    colours: [up, down, ceiling, floor, reference]
+    vision: [normal, deuteranopia, protanopia]
+    min: 6  # calibrate; ceiling and floor also carry a glyph or label
+  - name: categorical series apart
+    kind: distance_all
+    colours: [cat_1, cat_2, cat_3, cat_4, cat_5]
+    vision: [normal, deuteranopia, protanopia]
+    min: 6  # calibrate; at most 5 categorical colours
+  - name: diverging midpoint is neutral
+    kind: max_chroma
+    colours: [neutral]
+    max: 0.02  # OKLCH chroma; never a yellow or orange midpoint

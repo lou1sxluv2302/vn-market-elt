@@ -8,7 +8,9 @@ Knowledge lives in [`knowledge/`](knowledge/README.md) - v2's own source of trut
 | Exchanges, the HNX→HOSE consolidation, sessions, bands, ticks, lots, T+2, ex-rights, trading calendar, holidays, indices, foreign ownership limits | [`knowledge/market-microstructure.md`](knowledge/market-microstructure.md) |
 | vnstock, the VPS stream feed, device licences, rate limits, flow sources, fallbacks | [`knowledge/data-sources.md`](knowledge/data-sources.md) |
 | Look-ahead, coverage, units, thresholds, tests that lie, storage and freshness lessons | [`knowledge/data-quality-lessons.md`](knowledge/data-quality-lessons.md) |
-| Indicators, flows, BI conventions | Not migrated yet (K0.3). Read v1's knowledge base, read-only, (path in `CLAUDE.local.md`), after checking its label in the private v1 inventory |
+| Indicator parameters and formulas, incremental EMA, ADV20, back-adjustment, rounding to the tick grid | [`knowledge/indicators.md`](knowledge/indicators.md) |
+| Foreign and proprietary flow, breadth columns, index contribution | [`knowledge/flows.md`](knowledge/flows.md) |
+| Power BI model, DAX, aggregation over periods, colour and palette, chart rules | [`knowledge/bi-conventions.md`](knowledge/bi-conventions.md); palette values in `config/palette.yml` |
 
 Naming of every term: [`../CONTEXT.md`](../CONTEXT.md).
 

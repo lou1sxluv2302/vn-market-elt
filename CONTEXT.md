@@ -118,8 +118,32 @@ _Avoid_: room (for the limit itself)
 **Foreign room remaining** (`foreign_room_remaining_qty`) · _room khối ngoại còn lại_:
 Shares foreigners may still buy.
 
-**Proprietary trading** (`proprietary_trading`, prefix `prop_`) · _tự doanh_:
-Trading by securities firms on their own account.
+**Proprietary trading** (`proprietary_trading`, prefix `prop_`, `prop_data_available`) · _tự doanh_:
+Trading by securities firms on their own account; best-effort data, so every row says whether a value exists.
+
+**Foreign net flow** (`foreign_net_match_value_vnd`) · _khối ngoại mua/bán ròng khớp lệnh_:
+Foreign matched buy value minus foreign matched sell value in a session.
+_Avoid_: net foreign (unqualified), foreign net total
+
+**Foreign pressure** (`foreign_pressure`; `prop_pressure` for proprietary trading) · _áp lực khối ngoại_:
+Foreign matched net value divided by the session's matched value.
+_Avoid_: foreign ratio, flow strength
+
+**Foreign intensity** (`foreign_intensity`) · _mức tham gia của khối ngoại_:
+Foreign matched buy plus sell value divided by the session's matched value.
+_Avoid_: foreign share, participation (unqualified)
+
+**Foreign ownership share** (`foreign_own_pct`, `room_used_pct`) · _tỷ lệ sở hữu nước ngoài / room đã dùng_:
+End-of-day foreign holding over point-in-time shares outstanding, and that share over the foreign ownership limit.
+_Avoid_: room (for the share held)
+
+**Foreign streak** (`foreign_streak`) · _chuỗi phiên khối ngoại cùng chiều_:
+Consecutive sessions with the same sign of foreign net flow.
+_Avoid_: run, trend
+
+**Breakdown validity** (`is_breakdown_valid`) · _tách khớp/thoả thuận hợp lệ_:
+Whether match + put-through equals total for a row; when false the split columns are NULL and total is kept.
+_Avoid_: clean, verified
 
 **Domestic institution** (`domestic_institution`) · _tổ chức trong nước_:
 A Vietnamese institutional investor.
@@ -127,11 +151,35 @@ A Vietnamese institutional investor.
 **Insider deal** (`insider_deal`) · _giao dịch nội bộ_:
 A trade by an insider or related party, disclosed with a publication date.
 
+**Index contribution** (`index_contribution`) · _đóng góp điểm số_:
+A symbol's price change times its point-in-time shares; its share of the absolute total measures point concentration.
+_Avoid_: weight, impact, pillar pull
+
+**Point concentration** (`top3_index_contribution`, `concentration_ratio`) · _mức tập trung điểm số_:
+The top 3 symbols' share of the absolute index contribution, and that share over their market-cap share.
+_Avoid_: value concentration (that is `top10_value_share`)
+
+**Index event day** (`is_index_event_day`) · _ngày cơ cấu rổ_:
+A session when index reviews or provider changes take effect, so foreign flow is mechanical.
+_Avoid_: rebalance (unqualified), ETF day
+
 **Market breadth** (`market_breadth`) · _độ rộng thị trường_:
 Counts of advancing, declining, unchanged, ceiling and floor securities in a session.
 
 **Active symbol count** (`active_symbol_count`) · _số mã hoạt động trong phiên_:
-Securities that traded in the session; the denominator of breadth ratios.
+Securities that traded in the session; the denominator of most breadth ratios (`pct_advancing` divides by advancing + declining).
+
+**Advance/decline** (`advancing_count`, `declining_count`, `pct_advancing`) · _mã tăng / mã giảm_:
+Symbols closing above / below the reference price; `pct_advancing` excludes unchanged symbols.
+_Avoid_: gainers/losers, breadth % (unqualified)
+
+**McClellan oscillator** (`mcclellan_osc`) · _dao động McClellan_:
+The difference of a 19- and a 39-session EMA of advancing minus declining symbols.
+_Avoid_: breadth momentum (unqualified)
+
+**Ceiling/floor spread** (`ceiling_floor_spread_ratio`) · _chênh lệch trần/sàn_:
+Ceiling count minus floor count over the active symbol count, from the feed's ceiling and floor prices.
+_Avoid_: ceiling/floor count as a threshold
 
 ### Liquidity and universe
 
@@ -149,6 +197,36 @@ _Avoid_: watchlist, today's top N
 **Listing status** (`listing_status`, `delisted_date`) · _trạng thái niêm yết_:
 Listed or delisted; delisted securities stay in history.
 
+### Indicators
+
+**Moving average** (`sma_<n>`, `ema_<n>`) · _đường trung bình_:
+SMA is the plain mean of the last n session closes; EMA is recursive with weight 2/(n+1), updated per session and provisionally intraday.
+_Avoid_: MA (unqualified)
+
+**Warm-up** (`is_warmup`) · _giai đoạn khởi động_:
+The leading sessions in which an indicator lacks its required inputs and is NULL.
+_Avoid_: burn-in (the convergence span used to compare implementations)
+
+**Free-float shares** (`free_float_shares`) · _cổ phiếu tự do chuyển nhượng_:
+Point-in-time shares outstanding minus restricted holdings; the denominator of `turnover_ratio`.
+_Avoid_: shares outstanding (a different count)
+
+**Volume ratio** (`volume_ratio`) · _tỷ lệ khối lượng_:
+A session's matched quantity over its 20-session average matched quantity.
+_Avoid_: relative volume, volume spike
+
+**VWAP** (`vwap_vnd`) · _giá bình quân gia quyền khối lượng_:
+Matched value over matched quantity, from trade-level data.
+_Avoid_: average price
+
+**Cumulative adjustment factor** (`cum_adj_factor`, per event `adj_factor`) · _hệ số điều chỉnh tích luỹ_:
+The product of the adjustment factors of all corporate actions after a date; adjusted price = raw price × it.
+_Avoid_: split factor, back-adjustment ratio
+
+**Rounding toward safety** (rule, no column) · _làm tròn về phía an toàn_:
+Rounding a derived price level onto the tick grid in the direction that makes the computed risk larger.
+_Avoid_: round to nearest (for order levels)
+
 ### Calendar
 
 **Trading day** (`is_trading_day`) · _ngày giao dịch_:
@@ -165,6 +243,14 @@ A week built from trading days, not calendar weeks.
 
 **Session count** (`session_count`, `is_period_complete`) · _số phiên trong kỳ_:
 The number of sessions in a period, and whether the period has ended; mandatory on every period aggregate.
+
+**Trading period keys** (`trading_month_id`, `trading_year_id`) · _khoá kỳ giao dịch_:
+Month and year keys built from trading sessions, recomputed whenever the session set changes.
+_Avoid_: calendar month
+
+**Month-end session** (`is_month_end_session`, `is_quarter_end_session`) · _phiên cuối tháng / quý_:
+The last trading session of a month or quarter, not its last calendar day.
+_Avoid_: EOM date
 
 ### Disclosure and fundamentals
 
@@ -196,3 +282,25 @@ The validity window of a seed row or a dimension version; `effective_to` is excl
 
 **Source role** (`source_role`) · _vai nguồn_:
 `primary`, `fallback` or `verifier`; exactly one primary per dataset.
+
+**Aggregation suffix** (`_sum`, `_avg`, `_close`) · _hậu tố luật gộp_:
+The suffix stating how a metric aggregates over a period; one rule per metric.
+_Avoid_: reusing the daily column name for a period value
+
+### Reporting
+
+**As-of** (`as_of`) · _mốc dữ liệu_:
+The latest session or timestamp a visual is built from; shown on every page, one per page.
+_Avoid_: last updated, refresh time
+
+**Colour role** (`up`, `down`, `ceiling`, `floor`, `reference`, ... in `config/palette.yml`) · _màu tăng / giảm / trần / sàn / tham chiếu_:
+A named meaning a colour carries; the config key is the role, its value is set per theme.
+_Avoid_: green, red (as names)
+
+**Secondary encoding** (`secondary_encoding`) · _mã hoá phụ_:
+A non-colour channel (▲▼ glyph, signed number, edge mark) carrying the same meaning as a colour.
+_Avoid_: decoration, icon
+
+**Diverging heat scale** (`diverging_scale`) · _thang nhiệt phân cực_:
+Two hues for sign, two lightness steps each, a neutral midpoint.
+_Avoid_: traffic light, red-yellow-green
