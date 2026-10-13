@@ -12,6 +12,12 @@ variable "alert_email" {
   sensitive   = true
 }
 
+variable "owner_email" {
+  description = "Google account of the owner; may impersonate sa-loader."
+  type        = string
+  sensitive   = true
+}
+
 variable "region" {
   description = "Region for buckets and the VM; us-central1 is inside the free tier for both."
   type        = string

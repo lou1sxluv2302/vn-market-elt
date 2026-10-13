@@ -22,13 +22,14 @@ locals {
     "sa-collector" = "Collector on the VM: writes raw stream batches."
     "sa-dbt"       = "dbt runs: reads raw, writes staging, intermediate and marts."
     "sa-bi-reader" = "Reserved for a future BI tool: reads marts only."
+    "sa-loader"    = "dlt loads: writes raw_vnstock only (owner impersonates it)."
     "sa-ci-plan"   = "GitHub Actions through WIF: read-only, enough for terraform plan."
   }
 
   # Resource-scoped dataset roles: dataset => { account => role }.
   dataset_roles = {
     raw_vps_stream = { "sa-collector" = "roles/bigquery.dataEditor", "sa-dbt" = "roles/bigquery.dataViewer" }
-    raw_vnstock    = { "sa-dbt" = "roles/bigquery.dataViewer" }
+    raw_vnstock    = { "sa-dbt" = "roles/bigquery.dataViewer", "sa-loader" = "roles/bigquery.dataEditor" }
     staging        = { "sa-dbt" = "roles/bigquery.dataEditor" }
     intermediate   = { "sa-dbt" = "roles/bigquery.dataEditor" }
     marts_intraday = { "sa-dbt" = "roles/bigquery.dataEditor", "sa-bi-reader" = "roles/bigquery.dataViewer" }
@@ -51,6 +52,7 @@ locals {
     "sa-collector/jobUser"    = { account = "sa-collector", role = "roles/bigquery.jobUser" }
     "sa-dbt/jobUser"          = { account = "sa-dbt", role = "roles/bigquery.jobUser" }
     "sa-bi-reader/jobUser"    = { account = "sa-bi-reader", role = "roles/bigquery.jobUser" }
+    "sa-loader/jobUser"       = { account = "sa-loader", role = "roles/bigquery.jobUser" }
     "sa-collector/logWriter"  = { account = "sa-collector", role = "roles/logging.logWriter" }
     "sa-collector/metricsOut" = { account = "sa-collector", role = "roles/monitoring.metricWriter" }
   }

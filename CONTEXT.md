@@ -277,6 +277,14 @@ The sum of the last four published quarters.
 
 ### Data model
 
+**Pull** (`_ingest_partition`, `_source_file`) · _lượt kéo dữ liệu_:
+One retrieval of data from a source; raw keeps every pull, so a vendor's later revision of the same row is visible.
+_Avoid_: batch (a collector's 60-second file), version
+
+**Latest-wins** (rule, no column) · _bản mới nhất thắng_:
+The deduplication that keeps, per key, the row from the newest pull; applied in staging, never in raw.
+_Avoid_: upsert (raw is never updated)
+
 **Effective period** (`effective_from`, `effective_to`) · _hiệu lực từ / đến_:
 The validity window of a seed row or a dimension version; `effective_to` is exclusive and NULL means open.
 

@@ -39,7 +39,8 @@ they become the source of progress and this list is retired.
 - [x] v6 approved 2026-10-08 - research track before streaming (D23, D24); research moved to a private repo 2026-10-13
 
 **Cold path · research · streaming**
-- [ ] P1-P3 history load, dbt models, data-quality tests
+- [x] P1 history load - `raw_vnstock` holds every pull of v1's daily OHLCV (145 files to 2026-10-13) and the symbol lists; `tools/reconcile_v1.py` green on all four checks (#18)
+- [ ] P2-P3 dbt models, data-quality tests
 - [ ] Research track - tracked in the private repo
 - [ ] S0-S3 feed probe, collector, load, hot path
 - [ ] S4, P4, P5 → `v1.0.0`
@@ -261,7 +262,7 @@ After each batch: load job GCS → `raw_vps_stream.messages`, partitioned by `dt
 
 | Phase | Work | Done when |
 |---|---|---|
-| P1 | dlt loads history from the main repo's raw parquet into `raw_vnstock` (**read-only**) | Row counts match DuckDB |
+| P1 | dlt loads history from the main repo's raw parquet into `raw_vnstock` (**read-only**): every pull of daily OHLCV kept as a log, plus the symbol reference lists; security master and calendar are rebuilt in P2 | `tools/reconcile_v1.py`: raw = parquet per file · latest-wins over raw reproduces DuckDB except explained residuals · reference lists = parquet |
 | P2 | dbt: `is_stale` · `dim_trading_calendar` (≥ 30 traded symbols) · point-in-time universe · tick size and price band from seed `market_rules`. `tools/reconcile_duckdb.py` opens DuckDB **read-only** | Matches DuckDB per Q4 |
 | P3 | Port the main repo's data-quality tests to dbt tests, with planted faults | Every test has failed at least once |
 
@@ -332,7 +333,7 @@ this estimate is wrong.
 | # | Question | Proposal | Blocks |
 |---|---|---|---|
 | Q1 | How to detect vendor history rewrites after corporate actions? | Compare the overlap window between two pulls; raw is append-only with `_ingested_at`; staging picks the latest version | P4 |
-| Q2 | First cold-path scope? | OHLCV + security master + trading calendar | P1 |
+| Q2 | First cold-path scope? | **Decided (P1):** daily OHLCV + symbol reference lists loaded; security master and calendar built in dbt (P2); flows, fundamentals and index later | - |
 | Q3 | EMA and recursive indicators in dbt? | History: window-function definitions (SMA, ranges, ATR from SMA of true range); an EMA only where a consumer needs it, computed in a Python step. Intraday: incremental | P2 |
 | Q4 | DuckDB match criteria | Row count per (symbol, date) · exact price match · `is_stale` and universe 100% | P2 |
 | Q6 | Subscribe to all HOSE+HNX symbols or the universe only? | Decide after S0 from MB/min | S1 |
@@ -411,7 +412,7 @@ One rule: **a name must equal what it holds.** No abbreviations unless listed in
 | GCS bucket | `<project-id>-<env>-<purpose>` | `<project-id>-prod-raw` |
 | Object path | Hive partitions | `vps_stream/dt=2026-10-09/batch=093000.parquet` |
 | VM | `<role>-<env>-<NN>` | `collector-prod-01` |
-| Service account | `sa-<role>` | `sa-collector`, `sa-dbt`, `sa-bi-reader`, `sa-ci-plan` |
+| Service account | `sa-<role>` | `sa-collector`, `sa-loader`, `sa-dbt`, `sa-bi-reader`, `sa-ci-plan` |
 | Resource labels | `project`, `env`, `component`, `managed_by` | `managed_by=terraform` |
 
 Glossary of Vietnamese market terms: [`../CONTEXT.md`](../CONTEXT.md).
@@ -435,6 +436,7 @@ See [`../SECURITY.md`](../SECURITY.md) for the reporting policy. Design rules:
 |---|---|---|
 | Owner's Google account | Console, local Terraform, Power BI | Project owner. **2FA mandatory** |
 | `sa-collector` | Attached to the VM | `storage.objectCreator` **on the raw bucket only** · `bigquery.jobUser` · `bigquery.dataEditor` **on `raw_vps_stream` only** · secret accessor on its own secrets · `logging.logWriter` and `monitoring.metricWriter` (VM logs and metrics) |
+| `sa-loader` | dlt loads (P1 history, later daily pulls), run on the owner's machine through impersonation | `dataEditor` **on `raw_vnstock` only** · `jobUser`; only the owner holds `serviceAccountTokenCreator` on it |
 | `sa-dbt` | dbt runs | `dataViewer` on `raw_*` · `dataEditor` on `staging`, `intermediate`, `marts_*` · `jobUser` |
 | `sa-bi-reader` | Reserved for future BI (Grafana) | `dataViewer` on `marts_*` only · `jobUser` |
 | `sa-ci-plan` | GitHub Actions via WIF | **Metadata only**: `iam.securityReviewer`, service-account, WIF-pool, BigQuery metadata, bucket, secret and monitoring viewer roles, a custom compute-metadata role (no serial-port output), and `objectViewer` on the state bucket; enough for `terraform plan -lock=false`. Never `roles/viewer`: project viewers can read every dataset and bucket by default. No BigQuery access (CI runs dbt on DuckDB). `apply` never runs in CI |

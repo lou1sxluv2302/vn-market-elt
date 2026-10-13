@@ -1,0 +1,54 @@
+# Extract-load settings. Local paths and the project id are in config/env/prod.yml (git-ignored).
+
+v1_history:
+  pipeline_name: v1_history
+  dataset: raw_vnstock
+  bq_location: US
+
+  # Daily OHLCV parquet, one folder per ingest date: source=<s>/dataset=ohlcv_daily/ingest_date=<d>/*.parquet
+  # dnse_chart is left out: in v1 it is a cross-check source, never written to the chain.
+  ohlcv:
+    sources: [vnstock_quote, vndirect_dchart]
+    dataset_dir: ohlcv_daily
+    table: ohlcv_daily
+    partition_by_month_of: session_date   # ~315 partitions for 26 years, under the 4,000 a load job may touch
+    cluster_by: [symbol]
+
+  # Flat reference files, overwritten daily in v1: loaded as snapshots, one per file content.
+  # Not partitioned: each is under 10 MB, far below where BigQuery partitions pay off.
+  reference:
+    source_dir: vnstock_data
+    files: [all_symbols, symbols_by_exchange, symbols_by_industries, industries_icb, company_overview]
+    table_prefix: ref_
+
+  # Files whose name ends in anything other than ".parquet" (v1 keeps daily *.parquet.bak_<date>
+  # snapshots next to the live files) are never read.
+  file_suffix: .parquet
+
+  # The loader runs as sa-loader through impersonation (name in config/env/prod.yml).
+  oauth_scope: https://www.googleapis.com/auth/cloud-platform
+  impersonation_token_seconds: 3600      # life of one token; the credentials mint a new one when it expires
+
+  # Outbound timeouts (engineering rule: every call has one).
+  bigquery_http_timeout_seconds: 60
+  bigquery_file_upload_timeout_seconds: 1800
+  bigquery_retry_deadline_seconds: 300
+
+reconcile_v1:
+  query_timeout_seconds: 900
+  # Differences v1's own process explains, with the most of each that may appear.
+  # Measured 2026-10-13 by a read-only preflight on v1 (parquet standing in for raw):
+  # primary 4,581,477 rows equal, 0 mismatch. A larger count means v1 changed -
+  # explain it before raising a number here.
+  allowed_residuals:
+    held_by_fallback: 3285      # v1 kept the fallback source's row for the key
+    absent_in_v1: 41            # v1 removed the key when it re-fetched a date range
+    fallback_batch_not_in_log: 182   # one v1 fallback batch (2026-08-06 11:40 ICT) never reached the parquet log
+  # Position weight for the per-symbol checksum: a value moved between two dates,
+  # or +x on one date and -x on another, changes the weighted sum.
+  checksum_modulus: 1009
+
+# Column-name prefixes BigQuery refuses, case-insensitive (its error message and
+# "Column names" in the BigQuery docs). Checked before loading, because a local
+# DuckDB destination accepts them and only the cloud load would fail.
+bigquery_reserved_prefixes: [_partition, _table_, _file_, _row_timestamp, __root__, _colidentifier, _dremel_, _change_]
