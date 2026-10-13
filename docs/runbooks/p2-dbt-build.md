@@ -23,3 +23,18 @@ The calendar after the last observed session comes from `dbt/seeds/holidays.csv`
 year's dates by 1 December (a test fails otherwise) and replace `provisional` rows with the
 exchanges' calendar when it is published; extend `calendar_last_date` in `dbt_project.yml`
 with them.
+
+## Data tests (P3)
+
+`dbt build` runs the data tests after each model; a red test stops everything below it.
+After a change to the tests alone, `dbt test --project-dir dbt --profiles-dir dbt --target
+prod` reads the prod marts and writes nothing.
+
+- `monitor_fallback_rows_in_universe_symbols` only warns. Above its ceiling
+  (`dq_fallback_rows_ceiling` in `dbt_project.yml`, measured on prod) a source has
+  stopped for a symbol that trades: find the symbols with the query in the test, then
+  either fix the source or re-measure and update the ceiling with its date - never raise
+  it without the measurement.
+- A new data test needs a planted fault in `tools/planted_faults.py` that turns it red;
+  CI fails a data test no fault reaches. Run one fault locally with
+  `python tools/planted_faults.py --fault <name>`.

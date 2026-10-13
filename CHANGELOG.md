@@ -7,6 +7,16 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Data-quality tests (P3, #23): v1's checks for the layers v2 has, one condition each - price
+  structure (close positive, close and open within the day's range, volume, multiple of
+  10 VND), trading days and `session_seq`, ADV window and no look-ahead, no stale row in
+  the universe, watched symbols complete, marts not behind raw, last session not sparse,
+  exchange per period and from the symbol list, fallback only without a clean primary,
+  calendar without gaps or seeded holidays, universe in falling markets, `not_empty` on
+  every guarded model; a warning monitor on fallback rows (ceiling 151, measured on prod).
+- `tools/planted_faults.py`: a synthetic DuckDB warehouse; the control passes every data
+  test and each of 31 planted faults turns red exactly the tests it names; any data test
+  never red fails the run. Runs in `ci / dbt-test`.
 - dbt marts (P2 part 2, #20, ADR-0028): `dim_trading_calendar` (observed history, weekdays
   minus seeded holidays after it, sessions per month), `dim_security` (SCD2 exchange; the
   HNX→HOSE move; tick-inferred exchange for delisted symbols, flagged),

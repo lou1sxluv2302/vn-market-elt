@@ -10,6 +10,7 @@ models:
       - unique_combination:
           arguments:
             columns: [_source_id, symbol, trade_date]
+      - not_empty
 
   - name: stg_vnstock__symbols
     description: Newest symbol list; exchange normalised; delisted symbols have no exchange.

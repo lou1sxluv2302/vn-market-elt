@@ -40,8 +40,8 @@ they become the source of progress and this list is retired.
 
 **Cold path · research · streaming**
 - [x] P1 history load - `raw_vnstock` holds every pull of v1's daily OHLCV (145 files to 2026-10-13) and the symbol lists; `tools/reconcile_v1.py` green on all four checks (#18)
-- [ ] P2 dbt (#20) - part 1 merged (#21): project, keyless identity, market-rule seeds, staging, intermediate; part 2: marts (calendar, securities SCD2, prices, liquidity, universe) and `tools/reconcile_v1_marts.py`
-- [ ] P3 data-quality tests
+- [x] P2 dbt (#20) - project, keyless identity, market-rule seeds, staging, intermediate (#21); marts (calendar, securities SCD2, prices, liquidity, universe) and `tools/reconcile_v1_marts.py` green on all four checks, every difference named by its mechanism (#22)
+- [ ] P3 data-quality tests (#23) - v1's checks for the layers v2 has, as dbt tests; `tools/planted_faults.py` proves each can go red
 - [ ] Research track - tracked in the private repo
 - [ ] S0-S3 feed probe, collector, load, hot path
 - [ ] S4, P4, P5 → `v1.0.0`

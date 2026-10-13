@@ -179,6 +179,7 @@ The free UDF endpoints (`{"t","o","h","l","c","v","s"}`) need no auth and return
 
 **DCHART has 1-VND resolution** ✅ `measured on v1, 2026-08-06`, full history (CL 2.6.1, L3834; PLAN 2.39)
 - 52,463/96,497 DCHART rows (**54.4 %**) are off the 10-VND grid, against 0/4,447,775 for `vnstock_quote`.
+- In v2 the effect reaches `fct_price_daily` only where DCHART is the chosen source: 330 rows (99+ symbols, 2013-2023) off the 10-VND grid, 0 primary rows ✅ `measured on v2 prod, 2026-10-13`. The multiple-of-10 test therefore checks primary rows only.
 - The cause is the source itself. When vnstock failed, 19 symbols were re-fetched from DCHART, and only a semantic `tick_size` test caught it.
 
 **A fallback is not equivalent to the primary** ✅ `measured on v1, 2026-08-06` (sources.yml L67-92)

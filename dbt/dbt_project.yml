@@ -45,6 +45,25 @@ vars:
   liquidity_tier_low_vnd: 10000000000
   universe_tiers: [HIGH, MEDIUM, LOW]
 
+  # Data-quality tests (P3, docs/knowledge/data-quality-lessons.md). The watched symbols and
+  # the falling-market windows are v1's choices (dq test 18, validate_all group D), kept as
+  # v1 had them and never measured in v2; the planted-fault fixture overrides them.
+  dq_watched_symbols: [HPG, FPT, VCB, VNM, SSI, MBB]
+  dq_watched_from: "2023-01-01"
+  dq_watched_to: "2025-12-31"
+  dq_watched_max_missing_sessions: 5
+  dq_falling_market_windows:
+    - {from: "2018-01-01", to: "2018-12-31"}
+    - {from: "2020-01-01", to: "2020-03-31"}
+    - {from: "2022-01-01", to: "2022-12-31"}
+  dq_falling_market_min_symbols: 50
+  # Non-stale fallback rows of symbols ever in the universe: 151 rows of 40 symbols,
+  # measured on prod marts 2026-10-13 (data to 2026-10-13). v1 measured 0 under its own
+  # source rule; v2's clean-row rule (ADR-0028 decision 7) puts some there by design.
+  dq_fallback_rows_ceiling: 151
+  # "Today" for the next-year holiday test; null means the warehouse's date.
+  dq_holiday_check_date: null
+
 models:
   vnmarket:
     staging:
