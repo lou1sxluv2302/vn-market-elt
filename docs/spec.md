@@ -39,7 +39,8 @@ they become the source of progress and this list is retired.
 - [x] v6 approved 2026-10-08 - research track before streaming (D23, D24); research moved to a private repo 2026-10-13
 
 **Cold path · research · streaming**
-- [ ] P1-P3 history load, dbt models, data-quality tests
+- [x] P1 history load - `raw_vnstock` holds every pull of v1's daily OHLCV (145 files to 2026-10-13) and the symbol lists; `tools/reconcile_v1.py` green on all four checks (#18)
+- [ ] P2-P3 dbt models, data-quality tests
 - [ ] Research track - tracked in the private repo
 - [ ] S0-S3 feed probe, collector, load, hot path
 - [ ] S4, P4, P5 → `v1.0.0`

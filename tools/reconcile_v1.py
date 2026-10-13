@@ -183,15 +183,17 @@ def verdict(counts: dict[str, int], allowed: dict[str, int]) -> list[str]:
 
 
 def parquet_file_stats(files: list, modulus: int) -> pa.Table:
+    """Check 1, parquet side: one streaming query over every file, grouped by file. Reading
+    the files one table at a time into memory ran out of memory on v1's 12M rows."""
+    by_path = {str(item.path).replace("\\", "/"): item.relative for item in files}
     con = duckdb.connect()
-    parts = []
-    sig = signature("duckdb", modulus)
-    for item in files:
-        con.register("t", pq.read_table(item.path, columns=["session_date", *PRICE_COLUMNS]))
-        row = con.execute(f"select {sig} from t").to_arrow_table()
-        parts.append(row.append_column("_source_file", pa.array([item.relative])))
-        con.unregister("t")
-    return pa.concat_tables(parts)
+    stats = con.execute(
+        f"select replace(filename, '', '/') as path, {signature('duckdb', modulus)} "
+        "from read_parquet($1, filename = true) group by 1",
+        [list(by_path)],
+    ).to_arrow_table()
+    relative = pa.array([by_path[path] for path in stats["path"].to_pylist()])
+    return stats.drop(["path"]).append_column("_source_file", relative)
 
 
 def run() -> int:
@@ -466,7 +468,7 @@ def main() -> int:
 
     try:
         return run()
-    except (FileNotFoundError, KeyError, InputError, duckdb.IOException) as exc:
+    except (FileNotFoundError, KeyError, InputError, duckdb.Error) as exc:
         print(f"⚪ not run: {exc}", file=sys.stderr)
         return 2
     except (GoogleAPIError, GoogleAuthError) as exc:
