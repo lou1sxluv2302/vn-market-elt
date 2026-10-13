@@ -98,7 +98,7 @@ Grain: `exchange × trade_date`. Count only non-stale sessions (`is_stale = fals
 | `mcclellan_osc` | `EMA19(A - D) - EMA39(A - D)`; EMA as in [`indicators.md`](indicators.md) |
 | `top10_value_share` | traded value of the top 10 symbols / traded value of the exchange |
 
-- **`pct_advancing` excludes unchanged symbols.** With unchanged in the denominator (about 8.5% of symbols) the mean was 0.439; without it, 0.496, close to the neutral 0.5 the ratio is read against. `measured on v1, 2026-08-03`, population not stated in v1 (v1 04 §7.5b, L401)
+- **`pct_advancing` excludes unchanged symbols.** Unchanged symbols in the denominator pull the mean below the neutral 0.5 the ratio is read against. v1's size of that pull is not carried over (population never stated); re-measure it on v2 data ❓. (v1 04 §7.5b, L401)
 - **Ceiling and floor counts come from the feed's fields**: rule and reason in [`indicators.md`](indicators.md) §5.
 - **Value concentration is not index-point concentration.** A single large cap can carry about 40% of a session's index move with about 5% of its traded value ⚠️. Keep `top10_value_share` as a liquidity measure only. (v1 04 §7.8b, L436)
 - **Thresholds ❓**: A/D ratio zones, "% above MA" hot/oversold and bull/bear lines, ceiling/floor "panic" counts, top-10 share risk level, McClellan readings. v1 printed numbers for all of them, unmeasured. (v1 04 §7, L255)
@@ -115,7 +115,7 @@ Per symbol and session: `contribution = (close - reference) × shares_outstandin
 | `top3_contrib_z250` | (top3 - mean of the previous 250 sessions) / std of the previous 250 sessions |
 | `top1_direction` | sign of the leading symbol's contribution |
 
-- **Use a relative measure, not the raw share.** The raw top-3 share correlates with the number of symbols trading (-0.644), so an absolute threshold measures data coverage, not market behaviour; `concentration_ratio` (+0.14) and the z-score (+0.07) do not. `measured on v1, 2026-08-03`, 2,911 HOSE sessions 2013-04-02 → 2026-03-02 (v1 04 §7.1b, L281; §7.2b, L298)
+- **Use a relative measure, not the raw share.** The raw top-3 share rises as fewer symbols trade, so an absolute threshold measures data coverage, not market behaviour; `concentration_ratio` and the z-score are the candidates that should not. v1's correlations are not carried over; re-measure them on v2 data ❓ (lesson: [`data-quality-lessons.md`](data-quality-lessons.md)). (v1 04 §7.1b, L281; §7.2b, L298)
 - **The z-score window is `ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING`**, excluding the current session. Including it pulls the mean and deviation towards the value being scored (z shrinks) and is look-ahead. Require a minimum history, else NULL; v1 used 200 sessions, a data-sufficiency guard never calibrated (❓, set it in config). ✅ window rule (v1 04 §7.2b, L311; §7.7b, L426)
 - **HOSE only**: VN-Index contains only HOSE stocks. From 2026-12-28 former HNX stocks trade on HOSE; whether VN-Index absorbs them is ❓ ([`market-microstructure.md`](market-microstructure.md) §13 #10). ⚠️ (v1 04 §7.7b, L426)
 - **Denominator: every HOSE symbol with a price**, not the liquid universe; a universe denominator inflates the top-3 share. ⚠️ (v1 04 §7.7b, L426)
