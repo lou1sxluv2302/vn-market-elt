@@ -437,7 +437,7 @@ See [`../SECURITY.md`](../SECURITY.md) for the reporting policy. Design rules:
 | `sa-collector` | Attached to the VM | `storage.objectCreator` **on the raw bucket only** · `bigquery.jobUser` · `bigquery.dataEditor` **on `raw_vps_stream` only** · secret accessor on its own secrets · `logging.logWriter` and `monitoring.metricWriter` (VM logs and metrics) |
 | `sa-dbt` | dbt runs | `dataViewer` on `raw_*` · `dataEditor` on `staging`, `intermediate`, `marts_*` · `jobUser` |
 | `sa-bi-reader` | Reserved for future BI (Grafana) | `dataViewer` on `marts_*` only · `jobUser` |
-| `sa-ci-plan` | GitHub Actions via WIF | **Read-only**: `viewer` + `iam.securityReviewer` on the project and `objectViewer` on the state bucket, enough for `terraform plan -lock=false`. No BigQuery access (CI runs dbt on DuckDB). `apply` never runs in CI |
+| `sa-ci-plan` | GitHub Actions via WIF | **Metadata only**: `iam.securityReviewer`, service-account, WIF-pool, BigQuery metadata, bucket, secret and monitoring viewer roles, a custom compute-metadata role (no serial-port output), and `objectViewer` on the state bucket; enough for `terraform plan -lock=false`. Never `roles/viewer`: project viewers can read every dataset and bucket by default. No BigQuery access (CI runs dbt on DuckDB). `apply` never runs in CI |
 
 - **No JSON keys** (D12). Without a GCP organization the key-creation policy
   cannot be enforced, so a gate checks that

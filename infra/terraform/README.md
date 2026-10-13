@@ -21,6 +21,14 @@ terraform -chdir=infra/terraform/main plan -var-file=prod.tfvars -out=main.tfpla
 terraform -chdir=infra/terraform/main apply main.tfplan
 ```
 
+Close the `default` network the Compute API creates: it opens port 22, RDP and ICMP to the internet (spec §14.3 says port 22 is never open). Nothing is placed in it, so remove it right after the bootstrap apply:
+
+```bash
+gcloud compute firewall-rules list --filter="network=default" --format="value(name)"
+gcloud compute firewall-rules delete <each name listed>
+gcloud compute networks delete default
+```
+
 Then store the outputs as GitHub Actions **secrets** (not variables: the repository is public and only secrets are masked in logs): `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER` (output `wif_provider`), `GCP_CI_SERVICE_ACCOUNT` (output `ci_service_account`), `ALERT_EMAIL`.
 
 ## Free tier and cost
@@ -37,7 +45,10 @@ Then store the outputs as GitHub Actions **secrets** (not variables: the reposit
 ## Safety
 
 - `prevent_destroy` guards the state bucket, the raw bucket and the VM disk (stream samples and the vnstock device id cannot be recreated).
-- The VM has its own VPC with one inbound rule: SSH from IAP (`35.235.240.0/20`). The project's `default` network, created with the Compute API, opens port 22 to the internet; nothing is placed in it. Delete it when convenient: `gcloud compute networks delete default` after removing its firewall rules.
+- The VM has its own VPC with one inbound rule: SSH from IAP (`35.235.240.0/20`). The `default` network is deleted after bootstrap (first run, above).
+- `sa-ci-plan` reads metadata and IAM policies only; it is never a project viewer, because viewers can read every dataset and bucket by default.
+- Once `create_vm` has been true, setting it back to false fails the plan: the VM disk is protected by `prevent_destroy`, on purpose (it holds the vnstock device id).
+- `terraform-plan` cannot run for pull requests from forks: GitHub issues them no OIDC token.
 - Alerts fire on IAM policy changes, service-account key creation and firewall changes. An apply that changes IAM triggers the first one; that is expected.
 - Check after every apply that no service account has a user-managed key:
   `gcloud iam service-accounts keys list --iam-account=<account> --managed-by=user` must be empty.

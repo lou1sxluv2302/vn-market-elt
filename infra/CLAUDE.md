@@ -16,6 +16,8 @@ Loaded when working under `infra/`. Security design: `docs/spec.md` §14.
 - **Deployments are tags.** `deploy.sh <tag>` checks out exactly one tag on the
   VM; rollback is the previous tag.
 - **Two stacks** (`terraform/README.md`): `bootstrap` (local state, once) and
-  `main` (remote state). Never put an environment value in a `.tf` file.
+  `main` (remote state). Never put an environment value in a `.tf` file;
+  public identifiers of this repository (its name, its numeric id) are not
+  environment values.
 - **Free tier first.** Before adding a resource, state its free-tier limit and
   expected cost in the PR.

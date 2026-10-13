@@ -8,6 +8,27 @@ resource "google_service_account" "this" {
   description  = each.value
 }
 
+resource "google_project_iam_member" "ci_plan" {
+  for_each = local.ci_plan_roles
+
+  project = var.project_id
+  role    = each.value
+  member  = google_service_account.this["sa-ci-plan"].member
+}
+
+resource "google_project_iam_custom_role" "ci_plan_compute" {
+  role_id     = "ciPlanComputeReader"
+  title       = "CI plan: compute metadata reader"
+  description = "Read compute metadata for terraform plan; no serial-port output."
+  permissions = local.ci_plan_compute_permissions
+}
+
+resource "google_project_iam_member" "ci_plan_compute" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.ci_plan_compute.id
+  member  = google_service_account.this["sa-ci-plan"].member
+}
+
 resource "google_project_iam_member" "this" {
   for_each = local.project_roles
 

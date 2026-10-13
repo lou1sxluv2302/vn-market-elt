@@ -48,25 +48,52 @@ locals {
   # Project-level roles, only where no narrower scope exists. BigQuery jobs are
   # created in a project, so jobUser cannot be granted on a dataset.
   project_roles = {
-    "sa-collector/jobUser"        = { account = "sa-collector", role = "roles/bigquery.jobUser" }
-    "sa-dbt/jobUser"              = { account = "sa-dbt", role = "roles/bigquery.jobUser" }
-    "sa-bi-reader/jobUser"        = { account = "sa-bi-reader", role = "roles/bigquery.jobUser" }
-    "sa-ci-plan/viewer"           = { account = "sa-ci-plan", role = "roles/viewer" }
-    "sa-ci-plan/securityReviewer" = { account = "sa-ci-plan", role = "roles/iam.securityReviewer" }
-    "sa-collector/logWriter"      = { account = "sa-collector", role = "roles/logging.logWriter" }
-    "sa-collector/metricsOut"     = { account = "sa-collector", role = "roles/monitoring.metricWriter" }
+    "sa-collector/jobUser"    = { account = "sa-collector", role = "roles/bigquery.jobUser" }
+    "sa-dbt/jobUser"          = { account = "sa-dbt", role = "roles/bigquery.jobUser" }
+    "sa-bi-reader/jobUser"    = { account = "sa-bi-reader", role = "roles/bigquery.jobUser" }
+    "sa-collector/logWriter"  = { account = "sa-collector", role = "roles/logging.logWriter" }
+    "sa-collector/metricsOut" = { account = "sa-collector", role = "roles/monitoring.metricWriter" }
   }
+
+  # sa-ci-plan reads metadata and IAM policies, never data. roles/viewer is not
+  # used: BigQuery's default dataset access gives project viewers READER on every
+  # dataset, and buckets give them object read through legacy bindings.
+  ci_plan_roles = toset([
+    "roles/iam.securityReviewer",           # every getIamPolicy
+    "roles/iam.serviceAccountViewer",       # service accounts
+    "roles/iam.workloadIdentityPoolViewer", # WIF pool and provider
+    "roles/bigquery.metadataViewer",        # datasets and table schemas, no rows
+    "roles/storage.bucketViewer",           # bucket metadata, no objects
+    "roles/secretmanager.viewer",           # secret metadata, no versions' payload
+    "roles/monitoring.viewer",              # alert policies and channels
+  ])
+
+  # Compute metadata only. roles/compute.viewer would add serial-port output,
+  # which can carry boot logs.
+  ci_plan_compute_permissions = [
+    "compute.disks.get",
+    "compute.firewalls.get",
+    "compute.instances.get",
+    "compute.networks.get",
+    "compute.subnetworks.get",
+    "compute.zones.get",
+  ]
 
   # Spec §14.9: e-mail on these admin-activity events.
   log_alerts = {
     iam-policy-changed = {
       name = "IAM policy changed"
-      # Project, service-account, bucket and dataset policies log different method names.
-      filter = "logName:\"cloudaudit.googleapis.com%2Factivity\" AND protoPayload.methodName=~\"(?i)setiampolicy|setiampermissions\""
+      # Project, service-account and bucket policies log SetIamPolicy-like names;
+      # dataset grants are written through a dataset patch or update.
+      filter = "logName:\"cloudaudit.googleapis.com%2Factivity\" AND protoPayload.methodName=~\"(?i)setiampolicy|setiampermissions|DatasetService\\.(Patch|Update)Dataset|datasetservice\\.(patch|update)\""
     }
     service-account-key-created = {
       name   = "Service account key created"
-      filter = "protoPayload.methodName=\"google.iam.admin.v1.CreateServiceAccountKey\""
+      filter = "protoPayload.methodName=~\"google\\.iam\\.admin\\.v1\\.(Create|Upload)ServiceAccountKey\""
+    }
+    wif-changed = {
+      name   = "Workload identity pool or provider changed"
+      filter = "protoPayload.methodName=~\"(?i)WorkloadIdentityPool\" AND NOT protoPayload.methodName=~\"(?i)\\.(Get|List)\""
     }
     firewall-changed = {
       name   = "Firewall rule changed"

@@ -62,9 +62,9 @@ jobs:
         run: |
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"   # first push of a branch: no base to compare
-          elif git diff --quiet "$BASE" HEAD -- infra/terraform; then
+          elif git diff --quiet "$BASE" HEAD -- infra/terraform .github/workflows/infra.yml; then
             echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::⚪ plan not needed: infra/terraform is unchanged"
+            echo "::notice::⚪ not run: infra/terraform and this workflow are unchanged, no plan needed"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
@@ -86,9 +86,14 @@ jobs:
           TF_VAR_alert_email: ${{ secrets.ALERT_EMAIL }}
           STATE_BUCKET: ${{ secrets.GCP_PROJECT_ID }}-tfstate
         run: |
-          terraform init -lockfile=readonly -backend-config="bucket=${STATE_BUCKET}" > /dev/null
+          # stdout and stderr both stay out of the public log: provider errors can
+          # carry the project number or account names, which masking does not cover.
+          if ! terraform init -lockfile=readonly -backend-config="bucket=${STATE_BUCKET}" > /dev/null 2>&1; then
+            echo "::error::terraform init failed; run it locally to read the error"
+            exit 1
+          fi
           set +e
-          terraform plan -lock=false -detailed-exitcode -out=tfplan > /dev/null
+          terraform plan -lock=false -detailed-exitcode -out=tfplan > /dev/null 2>&1
           code=$?
           set -e
           if [ "$code" -eq 1 ]; then

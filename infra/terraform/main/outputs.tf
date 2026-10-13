@@ -1,13 +1,14 @@
 # Values the CI workflow needs; store them as GitHub Actions repository
-# variables, not in the repository.
+# SECRETS, not variables: the repository is public and only secrets are masked
+# in job logs.
 
 output "wif_provider" {
-  description = "GitHub variable GCP_WIF_PROVIDER."
+  description = "GitHub secret GCP_WIF_PROVIDER."
   value       = google_iam_workload_identity_pool_provider.github.name
 }
 
 output "ci_service_account" {
-  description = "GitHub variable GCP_CI_SERVICE_ACCOUNT."
+  description = "GitHub secret GCP_CI_SERVICE_ACCOUNT."
   value       = google_service_account.this["sa-ci-plan"].email
 }
 

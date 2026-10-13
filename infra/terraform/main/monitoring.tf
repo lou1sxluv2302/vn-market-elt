@@ -1,6 +1,7 @@
 resource "google_monitoring_notification_channel" "owner_email" {
   display_name = "Owner e-mail"
   type         = "email"
+  user_labels  = merge(local.labels, { component = "monitoring" })
   labels = {
     email_address = var.alert_email
   }
@@ -13,7 +14,7 @@ resource "google_monitoring_alert_policy" "log_alert" {
   display_name          = each.value.name
   combiner              = "OR"
   notification_channels = [google_monitoring_notification_channel.owner_email.id]
-  user_labels           = local.labels
+  user_labels           = merge(local.labels, { component = "monitoring" })
 
   conditions {
     display_name = each.value.name

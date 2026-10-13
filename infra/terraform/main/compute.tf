@@ -102,4 +102,7 @@ resource "google_compute_instance" "collector" {
     enable-oslogin         = "TRUE"
     block-project-ssh-keys = "TRUE"
   }
+
+  # unattended-upgrades and the collector user (spec §14.3-14.4) are configured
+  # by infra/deploy.sh at S0, not by Terraform.
 }
