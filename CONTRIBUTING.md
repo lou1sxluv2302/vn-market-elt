@@ -12,8 +12,11 @@ to be read. This file is the **single source** for the Git workflow.
   (`grill-with-docs`, `to-spec`, `to-tickets`, `wayfinder`, `tdd`, `implement`,
   `code-review`, `diagnosing-bugs`, `domain-modeling`, `triage`). Install those at
   user level; they are not vendored here. Their per-repo configuration is `docs/agents/`.
-- A guardrail hook (`.claude/settings.json`) blocks `git push`, `reset --hard`,
-  `clean -f`, `branch -D` and `checkout .` / `restore .` for agents: the owner runs them.
+- A guardrail hook (`.claude/settings.json`, Bash and PowerShell tools) blocks these
+  git commands for agents, and the owner runs them: `push` (any form, including
+  `git -C <dir> push`), `reset --hard`, `clean` with `-f`/`--force`, `branch -D` /
+  `--delete --force`, `checkout .` / `checkout -- .` / `restore .`. Implementation and
+  tests: `.claude/hooks/`. This list is the single description of the guardrail.
 
 ## Branches - GitHub Flow
 

@@ -1,13 +1,13 @@
 ---
 name: ship-pr
-description: Verify and open a pull request in vn-market-elt - review the diff for leaks, run every check, reconcile the docs, then wait for the owner's go-ahead before pushing. Use before any push, pull request, or "commit and push" in this repo.
+description: Verify and open a pull request in vn-market-elt - review the diff for leaks, run every check, reconcile the docs, then hand the push to the owner and open the PR. Use before any push, pull request, or "commit and push" in this repo.
 ---
 
 # ship-pr
 
 Sequence only. Rules: `CONTRIBUTING.md` (commits, PRs), `docs/engineering-rules.md` (checks), `SECURITY.md` (what never enters the repo).
 
-1. **Review the diff.** `git diff main...HEAD --stat`, then each file. Nothing from the private research repo, no market data, no paths or names from `CLAUDE.local.md`, no vendor-internal licence or feed details.
+1. **Review the diff.** `git diff main...HEAD --stat`, then each file. Nothing that `SECURITY.md` (What this repository will never contain) or the public-content item of `docs/runbooks/security-audit.md` excludes.
    Done when every changed file has a one-line purpose and none breaks those rules.
 
 2. **Run the checks; record exit codes.**
@@ -30,8 +30,8 @@ Sequence only. Rules: `CONTRIBUTING.md` (commits, PRs), `docs/engineering-rules.
    - `CHANGELOG.md` has an `[Unreleased]` line.
    - A changed decision has an ADR.
    - Relative links resolve.
-   - `CLAUDE.md` stays ≤ 80 lines.
-   - No em or en dash anywhere; the ASCII `-` only (`CONTRIBUTING.md`, Text style).
+   - `CLAUDE.md` is within its line target (its section "Keeping this file a router").
+   - Text style holds (`CONTRIBUTING.md`, Text style).
 
    Done when each item is ✅ or ⚪ with a reason.
 
@@ -41,7 +41,8 @@ Sequence only. Rules: `CONTRIBUTING.md` (commits, PRs), `docs/engineering-rules.
 5. **Commit.** Conventional Commit title, a body that says why, `Refs: #<issue>`, and the co-author line. Confirm `git config user.email` is the noreply address.
    Done when `git log -1` shows it.
 
-6. **Ask.** Give the owner the summary, the check table and the exact push command. Wait for an explicit go-ahead.
+6. **Hand over the push.** Give the owner the summary, the check table and the exact command, `git push -u origin <branch>`. Agents cannot push (`CONTRIBUTING.md`, Agent tooling).
+   Done when the owner reports the push done.
 
-7. **Push and open the PR.** The owner runs the push: `git push` is blocked for agents by the guardrail hook (`.claude/hooks/block-dangerous-git.sh`). Then open the PR with `gh pr create`, template filled; "How verified" is the check table. Merging is the owner's decision (squash only).
+7. **Open the PR** with `gh pr create`, template filled; "How verified" is the check table. Merging is the owner's decision (squash only).
    Done when the PR URL is reported.

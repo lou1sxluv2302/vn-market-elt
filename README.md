@@ -67,7 +67,7 @@ corporate actions · the HNX→HOSE consolidation. Details:
 ## Repository layout
 
 ```
-docs/          spec, architecture decision records, glossary, domain knowledge
+docs/          spec, architecture decision records, domain knowledge
 src/vnmarket/  collector and extract-load code (Python 3.11)
 dbt/           staging, intermediate and mart models, seeds, tests
 infra/         Terraform, systemd units, deploy script

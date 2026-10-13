@@ -102,7 +102,7 @@ onward that no vendor can rewrite**.
 | D12 | **No JSON key files anywhere**, CI included | VM uses its attached service account; local uses ADC; GitHub Actions uses WIF; Power BI uses a Google login |
 | D13 | Secondary warehouses only **after P3**, same parquet, same dbt project | Earlier would mean fixing each bug in four places |
 | D14 | **Everything in this repository is in English**: identifiers, comments, commits, branches, tags, docs | Demo-ability. The main repo keeps its Vietnamese rule; one rule per repo |
-| D15 | Vietnamese market terms are translated through **one glossary**, `CONTEXT.md` at the repo root | Two translations of one concept cannot be reconciled |
+| D15 | Vietnamese market terms are translated through **one glossary**, `CONTEXT.md` at the repo root (ADR-0025) | Two translations of one concept cannot be reconciled |
 | D16 | **GitHub Flow + Conventional Commits + SemVer** (`CONTRIBUTING.md`) | One long-lived branch is enough for a solo project; history still reads like a team's |
 | D17 | **The VM only runs tagged releases**, never `main` HEAD | The tag is what runs; rollback = deploy the previous tag |
 | D18 | Repository **`vn-market-elt`**, Python package `vnmarket` | Descriptive kebab-case English name |
@@ -360,7 +360,7 @@ units, scope, stale sessions): [`domain.md`](domain.md).
 ## 13. Naming conventions
 
 One rule: **a name must equal what it holds.** No abbreviations unless listed in
-the glossary.
+`CONTEXT.md`.
 
 ### 13.1 Repository, Python, CLI
 
@@ -385,7 +385,7 @@ the glossary.
 | `_pct` | percentage ×100 | `change_pct` |
 | `_ratio` | ratio, not ×100 | `foreign_ownership_ratio` |
 | `is_` / `has_` | BOOLEAN | `is_stale` |
-| `_id` | technical key (exception: securities are always `symbol`) | `batch_id` |
+| `_id` | technical key; a security's stable key is `security_id`, its ticker column is `symbol` | `batch_id`, `security_id` |
 | `_count` | count | `advancing_count` |
 | leading `_` | technical, non-business column | `_ingested_at`, `_source_id` |
 

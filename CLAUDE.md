@@ -19,17 +19,10 @@ repository** is **English** (ADR-0014).
 | **Git** - branches, commits, PRs, tags, releases | `CONTRIBUTING.md` |
 | **Infrastructure** - Terraform, VM, deploy | `infra/CLAUDE.md` (loads when working in `infra/`) |
 | **Constants** - thresholds, intervals, schedules | `config/*.yml` |
-| **Workflows** - starting a step, shipping a PR, auditing, releasing, harvesting v1 knowledge | `.claude/skills/`: `start-step` · `ship-pr` · `security-audit` · `release` (owner-invoked) · `harvest-knowledge` |
+| **Workflows** - starting a step, shipping a PR, auditing, releasing, harvesting v1 knowledge | `.claude/skills/`: `start-step` · `ship-pr` · `security-audit` · `release` (owner-invoked) · `harvest-knowledge`; the mattpocock/skills they call are configured in `docs/agents/` |
 
 Directory-specific rules live in a `CLAUDE.md` inside that directory and load
 only when you work there.
-
-## Agent skills
-
-Engineering skills from mattpocock/skills (installed at user level) read three files:
-issue tracker = GitHub Issues (`docs/agents/issue-tracker.md`) · triage labels = the five
-defaults (`docs/agents/triage-labels.md`) · domain docs = single context, `CONTEXT.md` +
-`docs/adr/` (`docs/agents/domain.md`). This repo's workflow skills call them at fixed steps.
 
 ## Always on
 
@@ -44,7 +37,8 @@ These hold in every task, because breaking them cannot be undone.
    `CLAUDE.local.md`, which is git-ignored);
    its DuckDB opens with `read_only=True`.
 4. **Pushes, PRs, tags and `terraform apply` wait for the owner's go-ahead** in
-   the conversation.
+   the conversation, and the owner runs pushes and applies; the agent hands over
+   the exact command (pushes are blocked for agents, `CONTRIBUTING.md`).
 
 ## Keeping this file a router
 

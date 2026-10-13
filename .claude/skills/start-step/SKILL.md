@@ -21,7 +21,7 @@ Sequence only. The rules live in the files named in each step.
    A small, fully specified step goes straight on.
    Done when the plan is approved, or you have stated why the step is small.
 
-4. **Issue.** Find or open the GitHub issue for the step; its milestone is the phase.
+4. **Issue.** Find or open the GitHub issue for the step; its milestone is the phase. A new issue goes through `/triage` (labels: `docs/agents/triage-labels.md`).
    Done when the issue number is known.
 
 5. **Branch.** From an up-to-date `main`, create `<type>/<phase>-<short-description>` as defined in `CONTRIBUTING.md`.

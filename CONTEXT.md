@@ -1,9 +1,11 @@
 # Vietnamese equity market data
 
 The language of vn-market-elt: how HOSE/HNX market concepts are named in prose,
-issues, tests and code. The **single source** for terms (ADR-0015). Add a term here
+issues, tests and code. The **single source** for terms (ADR-0025). Add a term here
 **before** using it anywhere; two names for one concept cannot be reconciled by
 any check. Each entry: definition · code name · Vietnamese term · words to avoid.
+
+Definitions only; rules, limits and dates for these terms live in `docs/knowledge/`.
 
 Units everywhere: prices are integer VND (`_vnd`), never thousand VND · timestamps
 are UTC (`_at`) · dates are Vietnam time (`_date`). Column suffixes: spec §13.
@@ -13,7 +15,7 @@ are UTC (`_at`) · dates are Vietnam time (`_date`). Column suffixes: spec §13.
 ### Market structure
 
 **Exchange** (`exchange`) · _sàn giao dịch_:
-The venue a security is listed on: `HOSE`, `HNX` or `UPCOM`. Time-varying per security (all HNX-listed stocks move to HOSE on 2026-12-28).
+The venue a security is listed on: `HOSE`, `HNX` or `UPCOM`; time-varying per security.
 _Avoid_: market, bourse, `HSX`
 
 **Symbol** (`symbol`) · _mã chứng khoán_:
@@ -35,7 +37,7 @@ _Avoid_: day, bar
 A part of the session with its own matching rules: `opening_auction`, `continuous`, `lunch_break`, `closing_auction`, `post_close_auction` (HNX PLO), `put_through`.
 
 **Opening auction / closing auction** (`opening_auction`, `closing_auction`) · _ATO / ATC_:
-The call auctions that set the opening and closing price. HNX has no opening auction.
+The call auctions that set the opening and closing price.
 
 **Order type** (`order_type`) · _loại lệnh_:
 LO, ATO, ATC, MTL, MOK, MAK or PLO; the valid set is versioned by date.
@@ -73,14 +75,14 @@ _Avoid_: previous close, yesterday's close
 The highest and lowest price allowed in the session.
 
 **Price band** (`price_band`) · _biên độ dao động_:
-The allowed move from the reference price: HOSE ±7 %, HNX ±10 %, UPCoM ±15 %, wider on some days.
+The allowed move from the reference price, set per exchange and case.
 _Avoid_: limit, range
 
 **Tick size** (`tick_size`) · _bước giá_:
 The smallest price increment for a security at a given price and date.
 
 **Limit-locked** (`is_limit_locked`) · _khoá trần / sàn_:
-A session where the price sits at the ceiling or floor with no match possible on one side. Needs real ceiling/floor prices from the feed.
+A session where the price sits at the ceiling or floor with no match possible on one side.
 
 **Raw price / adjusted price** (`raw_price`, `adjusted_price`) · _giá thô / giá điều chỉnh_:
 The price actually traded / a history rewritten by the vendor after corporate actions.
@@ -99,7 +101,7 @@ The first session in which a buyer no longer receives the right.
 _Avoid_: ex-date (unqualified), record date
 
 **Record date** (`record_date`) · _ngày đăng ký cuối cùng_:
-The date that fixes who receives the right; one session after the ex-rights date.
+The date that fixes who receives the right.
 
 **Cash dividend** (`cash_dividend_vnd`) · _cổ tức tiền mặt_:
 A per-share cash payment, converted from its percentage of par value.
@@ -114,7 +116,7 @@ The maximum share of a company foreigners may own.
 _Avoid_: room (for the limit itself)
 
 **Foreign room remaining** (`foreign_room_remaining_qty`) · _room khối ngoại còn lại_:
-Shares foreigners may still buy; deducted when an order is placed.
+Shares foreigners may still buy.
 
 **Proprietary trading** (`proprietary_trading`, prefix `prop_`) · _tự doanh_:
 Trading by securities firms on their own account.
@@ -158,11 +160,11 @@ A weekday that is not an exchange holiday. A make-up Saturday is not one.
 **Session sequence** (`session_seq`) · _số thứ tự phiên_:
 A gap-free integer over trading days; the key for "N sessions ago".
 
-**Trading week** (`trading_week_id`) · _tuần giao dịch_:
+**Trading week** (`trading_week_id`) · _khoá tuần giao dịch_:
 A week built from trading days, not calendar weeks.
 
 **Session count** (`session_count`, `is_period_complete`) · _số phiên trong kỳ_:
-The number of sessions in a period, and whether the period has ended.
+The number of sessions in a period, and whether the period has ended; mandatory on every period aggregate.
 
 ### Disclosure and fundamentals
 

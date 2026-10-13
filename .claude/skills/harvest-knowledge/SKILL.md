@@ -25,10 +25,7 @@ The inventory and v1's paths are local; see `CLAUDE.local.md`.
 
    Done when each selected row maps to text or to a recorded skip.
 
-4. **Keep the public repo clean.** These stay out:
-   - strategy, signal, backtest or hypothesis numbers;
-   - vendor-internal licence or feed mechanics;
-   - local paths, account tiers and private names.
+4. **Keep the public repo clean** by the public-content item of `docs/runbooks/security-audit.md` (research, vendor internals, local identifiers stay out).
 
    Done when `python tools/secret_scan.py` exits 0 with no warnings, and a read-through finds none of the above.
 

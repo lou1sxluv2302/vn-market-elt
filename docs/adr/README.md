@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Decisions D1-D24 of [`../spec.md`](../spec.md), one file each. Status values: Proposed · Accepted · Superseded.
+Decisions D1-D24 (ADR-0025 supersedes ADR-0015) of [`../spec.md`](../spec.md), one file each. Status values: Proposed · Accepted · Superseded.
 
 | ADR | Title |
 |---|---|
@@ -28,3 +28,4 @@ Decisions D1-D24 of [`../spec.md`](../spec.md), one file each. Status values: Pr
 | [0022](0022-re-select-rules-instead-of-copying-them.md) | Re-select rules instead of copying them |
 | [0023](0023-stock-selection-research-before-streaming.md) | Stock-selection research before streaming, in a private repository |
 | [0024](0024-keep-research-discipline.md) | Keep research discipline |
+| [0025](0025-project-language-lives-in-context-md.md) | The project's language lives in CONTEXT.md (supersedes 0015) |
