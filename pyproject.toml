@@ -11,7 +11,7 @@ dependencies = [
 [project.optional-dependencies]
 # Sponsor-only vnstock libraries are NOT on PyPI and are never required in CI;
 # the collector isolates them behind an interface (spec §14.7).
-dev = ["ruff==0.6.9", "pre-commit==3.8.0"]
+dev = ["ruff==0.6.9", "pre-commit==4.6.2"]
 
 [build-system]
 requires = ["setuptools>=69"]
