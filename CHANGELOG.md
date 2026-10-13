@@ -7,7 +7,7 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
-- Knowledge K0.3 (#12): `indicators.md`, `flows.md`, `bi-conventions.md`; 21 new
+- Knowledge K0.3 (#12): `indicators.md`, `flows.md`, `bi-conventions.md`; 26 new
   terms in `CONTEXT.md`.
 - A measured v2 palette (ADR-0026): `config/palette.yml` for light and dark themes,
   `tools/check_palette.py` (WCAG contrast, CIEDE2000 under simulated colour-vision

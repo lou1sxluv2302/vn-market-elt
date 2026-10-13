@@ -11,7 +11,7 @@ Status: K0.3 translation of v1 KB rows labelled for this file in v1's knowledge 
 ## 1. Defaults
 
 - **Use industry-standard parameters.** Change one only with out-of-sample evidence from at least three distinct market phases; that evidence lives in the private research repository, not here. ⚠️ v1 convention (v1 04 §11, L634)
-- **Ship one indicator per measured quantity.** When a candidate correlates above 0.8 with an indicator already shipped, keep the existing one. RSI, MFI and Stochastic measure the same thing: ship one of them. ⚠️ v1 convention, threshold not measured on v1 (v1 04 §11, L633)
+- **Ship one indicator per measured quantity.** When a candidate is highly correlated with an indicator already shipped, keep the existing one; the cut-off is ❓ (v1 wrote one without measuring it). RSI, MFI and Stochastic measure the same thing: ship one of them. ⚠️ v1 convention (v1 04 §11, L633)
 - **Describe every indicator column in one plain sentence** in the dbt docs; a column that cannot be described that way is not shipped. ⚠️ v1 convention (v1 04 §11, L635)
 - Industry parameters ⚠️ (v1 kpi Layer 2, L73; v1 04 §2, L33):
 

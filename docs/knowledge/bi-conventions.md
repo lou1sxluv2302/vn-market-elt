@@ -57,7 +57,7 @@ RETURN
   The same pattern gives an N-session return, a moving average (`session_seq > CurSeq - N && session_seq <= CurSeq`) and YTD from the year's first `session_seq` with `is_trading_day = TRUE()`. ❓ (v1 08 §2.2, L78-L114)
 - **Wrap column-vs-column comparisons in `FILTER`.** A boolean filter argument of `CALCULATE` may reference only one column; `close > ma50` needs `FILTER(fct, fct[close] > fct[ma50])`. ❓ (v1 08 §2.3, L133)
 - **Exclude stale sessions in every measure** (`is_stale = FALSE()`), and warm-up rows for indicator-based measures. A stale session has zero volume and a copied price. ⚠️ (v1 08 §2.3, L117; CONTEXT `is_stale`)
-- **Count ceiling and floor from the feed's fields**, never from adjusted prices: ceiling count = sessions with the raw close equal to `ceiling_price_vnd`. v1's version compared `close_raw`, which was 100% NULL, so its counts never worked. ✅ v1 limitation (v1 08 §2.3, L135; inventory A2)
+- **Count ceiling and floor from the feed's fields** ([`indicators.md`](indicators.md) §5): a ceiling session has the raw close equal to `ceiling_price_vnd`. v1's DAX compared `close_raw`, which was 100% NULL, so its counts never worked. ✅ v1 limitation (v1 08 §2.3, L135)
 - **Breadth measures** count distinct symbols: % above MA50, advance/decline ratio, top-10 turnover concentration (`TOPN(10, ...)` over turnover ÷ all symbols). ❓ (v1 08 §2.3, L119-L146) Advancing share excludes unchanged symbols; definitions live in `flows.md`.
 - **Put complex logic in dbt.** Streaks, state machines, divergence and anything sequential is a gold column; DAX only aggregates and filters. v1 names this the first cause of slow Power BI reports. ⚠️ (v1 08 §2.4, L167; v1 08 §7, L427) A measure that reads a pre-computed column is `SELECTEDVALUE(fct[foreign_streak])`.
 
@@ -82,24 +82,21 @@ RETURN
 
 v2 does not inherit v1's colour values. The palette is designed and measured separately; this section carries the rules and the measurement method.
 
-**The v2 palette** lives in [`config/palette.yml`](../../config/palette.yml) (ADR-0026), one block per theme, values chosen in OKLCH. `tools/check_palette.py` measures it against the rules below and CI runs it; the research behind the thresholds is [`../design/colour-and-ux-research.md`](../design/colour-and-ux-research.md). ✅ measured 2026-10-13, 22 of 22 rules on both themes.
+**The v2 palette** lives only in [`config/palette.yml`](../../config/palette.yml) (ADR-0026): one block per theme, values chosen in OKLCH, each rule's threshold and source next to it. `tools/check_palette.py` measures it and CI runs it on every pull request; run it locally to read the current numbers. The research behind the thresholds is [`../design/colour-and-ux-research.md`](../design/colour-and-ux-research.md).
 
-| Role | Light | Dark | Use |
-|---|---|---|---|
-| `up` · `down` | `#067F5C` · `#B00326` | `#40CD9B` · `#EF675C` | Price up / down, as text and marks |
-| `ceiling` · `floor` · `reference` | `#8E47CD` · `#017A9B` · `#9D6304` | `#A36FD9` · `#5EC6EC` · `#E0AE57` | Price-board states |
-| `up_weak` · `up_strong` | `#BBF2E2` · `#067F5C` | `#003F33` · `#016246` | Heat scale, positive side |
-| `down_weak` · `down_strong` | `#FFCEBD` · `#B00326` | `#4A2010` · `#8C2D28` | Heat scale, negative side |
-| `neutral` | `#E9EBEE` | `#232426` | Heat-scale midpoint, unsigned cells |
-| `cat_1` .. `cat_5` | blue, orange, magenta, olive, slate | lighter versions | Series identity only, never price meaning |
-
-The config is the source; this table is a reading aid. Measured pairs that matter most: up vs down CIEDE2000 under deuteranopia 18.5 (light) and 14.4 (dark), protanopia 13.0 and 19.3; every price-role colour is readable as text at 4.5:1 or more on both backgrounds and surfaces.
+| Role (config key) | Use |
+|---|---|
+| `up` · `down` | Price up / down, as text and marks |
+| `ceiling` · `floor` · `reference` | Price-board states |
+| `up_weak` · `up_strong` · `down_weak` · `down_strong` · `neutral` | Diverging heat scale: two steps per hue, neutral midpoint |
+| `cat_1` .. `cat_5` | Series identity only, never price meaning |
+| `background` · `surface` · `text` · `text_muted` · `text_on_strong` | Surfaces and text |
 
 - **Follow the VN price-board semantics.** Up = green · down = red · ceiling = purple · floor = cyan · reference / unchanged = yellow-amber. Wrong colours are misread instantly; this is a convention, not a taste. ⚠️ (v1 08 §6, L388; v1 10 L152)
 - **Keep score and status colours apart from price colours.** ⚠️ (v1 08 §6, L402)
 - **Colour carries a verdict, not a sign.** Do not reuse up/down hues for non-price signs (a negative correlation is not "bad"). Show the sign by direction and an explicit ±. The position in a 52-week range uses a neutral colour: the top of the range is not good or bad by itself. ⚠️ (v1 08 §v2.9.30 G, L790)
 - **At most 5 categorical colours.** v1 found no combination of 6 or more that passed its colour-vision check. `measured on v1 palette, 2026-08-06` (v1 08 §v2.7.2 C, L521)
-- **Green vs red needs CVD distance ΔE ≥ 8** (simulated colour-vision deficiency). ΔE 6-8 is a floor, valid **only** with secondary encodings; normal-vision ΔE has a floor of 15. v1's light pastel pair failed hard (CVD 3.4, normal 11.1) while its strong pair passed (8.5). ✅ `measured on v1 palette, 2026-08-17` (v1 08 §v2.7.2 C, L535; v1 10 L622)
+- **Green vs red needs CVD distance ΔE ≥ 8** (simulated colour-vision deficiency). ΔE 6-8 is a floor, valid **only** with secondary encodings; normal vision needs a much larger distance (v1 used 15; v2's starting value is in `config/palette.yml`). v1's light pastel pair failed hard (CVD 3.4, normal 11.1) while its strong pair passed (8.5). ✅ `measured on v1 palette, 2026-08-17` (v1 08 §v2.7.2 C, L535; v1 10 L622)
 - **Measure every background separately.** The same pairs measured differently on v1's dark theme (2026-08-23). A number quoted for a pair belongs to that pair and that background; v1 once quoted the number of a rejected candidate as the running scale's. ✅ (v1 08 §v2.7.2 C, L550)
 - **Diverging heat scales use exactly two steps per hue.** A third step failed both in-cell text contrast and step separation on v1. Hue carries the sign, lightness the magnitude. ✅ `measured on v1 palette, 2026-08-17` (v1 08 §v2.7.2 C, L570)
 - **Three secondary encodings are mandatory on every green/red heat cell:** ▲▼ glyph · signed number in the cell · edge mark (top for up, bottom for down). They are conditions of the rule, kept even where ΔE passes. A cell too small for a number is grey, not signed. Polar bars (net foreign flow) carry an explicit ± and their position against the zero line. ✅ (v1 08 §v2.7.2 C, L566-L581)

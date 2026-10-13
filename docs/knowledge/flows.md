@@ -12,10 +12,10 @@ Status: K0.3 translation of v1 KB rows labelled for this file in v1's knowledge 
 
 ## 1. Why flows matter
 
-- **Foreign flow is watched far beyond its share of trading.** v1 put the foreign share of traded value at roughly 8-12%; the share itself is ❓ (no source cited). (v1 05 §1, L10)
+- **Foreign flow is watched far beyond its share of trading.** Its share of traded value is ❓: v1 gave a figure without a source, so none is carried here. (v1 05 §1, L10)
 - **Foreign flow tends to persist**: a net-buying run often lasts weeks. ⚠️ v1 claim, not measured in v1. (v1 05 §1, L14)
 - **2025 was a record net-selling year**: 134,788 bn VND (about 5.1 bn USD), 2.92 bn shares across the three exchanges; HOSE alone about 125,000-129,000 bn VND. ⚠️ press figure, dated 2026-08-16. (v1 kpi L107)
-- **Market-level events move foreign flow mechanically**: the FTSE upgrade (effective 2026-09-21) and index reviews. Dates and status are in [`market-microstructure.md`](market-microstructure.md) §9 and §11; treat them as event annotations (section 2.3).
+- **Market-level events move foreign flow mechanically** ⚠️: the FTSE upgrade (effective 2026-09-21) and index reviews. Dates and status are in [`market-microstructure.md`](market-microstructure.md) §9 and §11; treat them as event annotations (section 2.3).
 - **VN-Index is uncapped**, so a few large caps can lift it while most stocks fall. Breadth (section 4) and index contribution (section 5) exist to expose that. ⚠️ (v1 04 §7, L268; [`market-microstructure.md`](market-microstructure.md) §9)
 - Index composition, foreign ownership limits, Decree 245/2025 and bank room are in [`market-microstructure.md`](market-microstructure.md) §9-§10; they are not repeated here.
 
@@ -74,11 +74,11 @@ Per symbol and session. Build every measure on the **matched** part; put-through
 ### 3.2 Interpretation: warrant hedging
 
 - Securities firms trade for their own book **and** to delta-hedge covered warrants they issued. When a firm has warrants outstanding on symbol X, it must buy X to hedge, so net prop buying can be purely technical. ⚠️ (v1 05 §2, L192)
-- **What to do:** show prop flow with an annotation of outstanding `covered_warrant` issues on the symbol. Without that information, label the prop reading low confidence. (v1 05 §2, L195)
+- **What to do:** show prop flow with an annotation of outstanding `covered_warrant` issues on the symbol. Without that information, label the prop reading low confidence. ⚠️ (v1 05 §2, L195)
 
 ### 3.3 Data gaps
 
-- HOSE stopped publishing prop data on 2022-03-01; public sources now fold it into `domestic_institution`. ⚠️ (v1 05 §2, L178; v1 02 §v1.5, L580)
+- HOSE stopped publishing prop data in early March 2022; public sources now fold it into `domestic_institution`. ⚠️ (v1 05 §2, L178; v1 02 §v1.5, L580) v1's prose gives 2022-03-01 while the gap measured below starts on 2022-03-03; the exact date is ❓.
 - History starts in **2020**, with a gap of exactly 50 sessions (2022-03-03 → 04-29 and 2022-05-04 → 05-16). Coverage falls steeply with liquidity. ✅ `measured on v1, 2026-08-04`, 145,293 rows (v1 02 §v1.5, L586). Detail: [`data-sources.md`](data-sources.md) §4.
 - **What to do:** model `prop_` as nullable and **best-effort**; it can stop at any time. Nothing downstream may require it. Carry `prop_data_available`, use 0 only where the symbol is eligible point-in-time ([`data-sources.md`](data-sources.md) §4), and cross-check prop totals against `domestic_institution` where both exist. ⚠️ (v1 02 §v1.5, L607)
 
@@ -99,8 +99,8 @@ Grain: `exchange × trade_date`. Count only non-stale sessions (`is_stale = fals
 | `top10_value_share` | traded value of the top 10 symbols / traded value of the exchange |
 
 - **`pct_advancing` excludes unchanged symbols.** With unchanged in the denominator (about 8.5% of symbols) the mean was 0.439; without it, 0.496, close to the neutral 0.5 the ratio is read against. `measured on v1, 2026-08-03`, population not stated in v1 (v1 04 §7.5b, L401)
-- **Ceiling and floor counts come from the feed's `ceiling_price_vnd` / `floor_price_vnd`** and the matched close. v1 compared adjusted closes with derived limits, so all its counts were estimates. ⚠️ (inventory A2; [`market-microstructure.md`](market-microstructure.md) §3)
-- **Value concentration is not index-point concentration.** A single large cap can carry about 40% of a session's index move with about 5% of its traded value ⚠️. The top-3 share of traded value averaged 19.4% and never came near the point-based levels `measured on v1, 2026-08-03`, 2,297 sessions. Keep `top10_value_share` as a liquidity measure only. (v1 04 §7.8b, L436)
+- **Ceiling and floor counts come from the feed's fields**: rule and reason in [`indicators.md`](indicators.md) §5.
+- **Value concentration is not index-point concentration.** A single large cap can carry about 40% of a session's index move with about 5% of its traded value ⚠️. Keep `top10_value_share` as a liquidity measure only. (v1 04 §7.8b, L436)
 - **Thresholds ❓**: A/D ratio zones, "% above MA" hot/oversold and bull/bear lines, ceiling/floor "panic" counts, top-10 share risk level, McClellan readings. v1 printed numbers for all of them, unmeasured. (v1 04 §7, L255)
 
 ## 5. Index contribution
@@ -116,11 +116,11 @@ Per symbol and session: `contribution = (close - reference) × shares_outstandin
 | `top1_direction` | sign of the leading symbol's contribution |
 
 - **Use a relative measure, not the raw share.** The raw top-3 share correlates with the number of symbols trading (-0.644), so an absolute threshold measures data coverage, not market behaviour; `concentration_ratio` (+0.14) and the z-score (+0.07) do not. `measured on v1, 2026-08-03`, 2,911 HOSE sessions 2013-04-02 → 2026-03-02 (v1 04 §7.1b, L281; §7.2b, L298)
-- **The z-score window is `ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING`**, excluding the current session. Including it pulls the mean and deviation towards the value being scored (z shrinks) and is look-ahead. Require at least 200 prior sessions, else NULL. ✅ (v1 04 §7.2b, L311; §7.7b, L426)
+- **The z-score window is `ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING`**, excluding the current session. Including it pulls the mean and deviation towards the value being scored (z shrinks) and is look-ahead. Require a minimum history, else NULL; v1 used 200 sessions, a data-sufficiency guard never calibrated (❓, set it in config). ✅ window rule (v1 04 §7.2b, L311; §7.7b, L426)
 - **HOSE only**: VN-Index contains only HOSE stocks. From 2026-12-28 former HNX stocks trade on HOSE; whether VN-Index absorbs them is ❓ ([`market-microstructure.md`](market-microstructure.md) §13 #10). ⚠️ (v1 04 §7.7b, L426)
 - **Denominator: every HOSE symbol with a price**, not the liquid universe; a universe denominator inflates the top-3 share. ⚠️ (v1 04 §7.7b, L426)
 - **Point-in-time shares are required** (`is_shares_pit = true`); today's share count applied to the past is look-ahead. ⚠️ (v1 04 §7.7b, L426)
-- **Minimum 50 symbols** in the session; below that the top 3 dominate trivially. ⚠️ (v1 04 §7.7b, L426)
+- **Require a minimum number of symbols** in the session; below it the top 3 dominate trivially. v1 used 50, never calibrated (❓, set it in config). ⚠️ (v1 04 §7.7b, L426)
 - Columns that cannot be evaluated (too few symbols, short history, no PIT shares) are **NULL**, not false or 0. ⚠️ (v1 04 §7.6b, L416)
 - v1 used adjusted close and previous close. In v2 use raw close and the feed's `reference_price_vnd`, which carries ex-rights adjustment on the ex-date. ❓ v2 design; VN-Index weighting (free float or not) is open ([`market-microstructure.md`](market-microstructure.md) §13 #1).
 
@@ -140,14 +140,14 @@ Grain `symbol × trade_date`. Derived from v1's specification, restricted to flo
 | Events | `is_index_event_day` (index review or index-provider effective date) |
 
 - Margin, insider, sentiment and composite scores from v1's table belong to other models; v1's flow-by-price regime matrix is research and is not carried over.
-- Complex logic (streaks, rolling windows) is computed in the transformation layer, not in BI measures; DAX only aggregates and filters. ⚠️ (v1 08 §2.4, L167)
+- Streaks and rolling windows are dbt columns, not BI measures: [`bi-conventions.md`](bi-conventions.md) §2.
 
 ### 6.2 Chart notes
 
 - **Foreign and prop net flow: diverging bar** (sign and size), by day over 60 sessions, with the cumulative net as a line; by sector or market cap as a treemap. ⚠️ (v1 kpi L107; v1 08 §4, L292)
 - **Foreign net MA20 and pressure in BI**: the window steps over `session_seq` (`seq > current - 20 AND seq <= current`), and pressure divides net matched by **matched** turnover. ⚠️ (v1 08 §2.4, L149)
-- **VN-Index candles + `pct_above_ma200` on a secondary axis**: v1's main divergence chart (index at a new high while the share above MA200 falls). The reading is ❓ - never measured; show it as context, not as a signal. (v1 08 §4, L296)
+- **VN-Index candles above a `pct_above_ma200` panel, sharing the session axis** (two panels, not a dual axis; [`bi-conventions.md`](bi-conventions.md) §5): v1's main divergence chart (index at a new high while the share above MA200 falls). The reading is ❓ - never measured; show it as context, not as a signal. (v1 08 §4, L296)
 - Breadth charts: A/D line as a cumulative line, A/D ratio as line or bar, "% above MA" as a line with a 50% reference, McClellan as an oscillator around 0, new highs vs new lows as lines. ⚠️ (v1 kpi L102)
-- Derivatives (basis, open interest) and ETF creation/redemption flows are out of scope. (v1 kpi L111-113)
+- Derivatives (basis, open interest) and ETF creation/redemption flows are out of scope for v2. ⚠️ (v1 kpi L111-113)
 
 New terms used here are defined in [`../../CONTEXT.md`](../../CONTEXT.md).

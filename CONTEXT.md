@@ -118,8 +118,8 @@ _Avoid_: room (for the limit itself)
 **Foreign room remaining** (`foreign_room_remaining_qty`) · _room khối ngoại còn lại_:
 Shares foreigners may still buy.
 
-**Proprietary trading** (`proprietary_trading`, prefix `prop_`) · _tự doanh_:
-Trading by securities firms on their own account.
+**Proprietary trading** (`proprietary_trading`, prefix `prop_`, `prop_data_available`) · _tự doanh_:
+Trading by securities firms on their own account; best-effort data, so every row says whether a value exists.
 
 **Foreign net flow** (`foreign_net_match_value_vnd`) · _khối ngoại mua/bán ròng khớp lệnh_:
 Foreign matched buy value minus foreign matched sell value in a session.
@@ -137,6 +137,10 @@ _Avoid_: foreign share, participation (unqualified)
 End-of-day foreign holding over point-in-time shares outstanding, and that share over the foreign ownership limit.
 _Avoid_: room (for the share held)
 
+**Foreign streak** (`foreign_streak`) · _chuỗi phiên khối ngoại cùng chiều_:
+Consecutive sessions with the same sign of foreign net flow.
+_Avoid_: run, trend
+
 **Breakdown validity** (`is_breakdown_valid`) · _tách khớp/thoả thuận hợp lệ_:
 Whether match + put-through equals total for a row; when false the split columns are NULL and total is kept.
 _Avoid_: clean, verified
@@ -151,6 +155,10 @@ A trade by an insider or related party, disclosed with a publication date.
 A symbol's price change times its point-in-time shares; its share of the absolute total measures point concentration.
 _Avoid_: weight, impact, pillar pull
 
+**Point concentration** (`top3_index_contribution`, `concentration_ratio`) · _mức tập trung điểm số_:
+The top 3 symbols' share of the absolute index contribution, and that share over their market-cap share.
+_Avoid_: value concentration (that is `top10_value_share`)
+
 **Index event day** (`is_index_event_day`) · _ngày cơ cấu rổ_:
 A session when index reviews or provider changes take effect, so foreign flow is mechanical.
 _Avoid_: rebalance (unqualified), ETF day
@@ -164,6 +172,10 @@ Securities that traded in the session; the denominator of most breadth ratios (`
 **Advance/decline** (`advancing_count`, `declining_count`, `pct_advancing`) · _mã tăng / mã giảm_:
 Symbols closing above / below the reference price; `pct_advancing` excludes unchanged symbols.
 _Avoid_: gainers/losers, breadth % (unqualified)
+
+**McClellan oscillator** (`mcclellan_osc`) · _dao động McClellan_:
+The difference of a 19- and a 39-session EMA of advancing minus declining symbols.
+_Avoid_: breadth momentum (unqualified)
 
 **Ceiling/floor spread** (`ceiling_floor_spread_ratio`) · _chênh lệch trần/sàn_:
 Ceiling count minus floor count over the active symbol count, from the feed's ceiling and floor prices.
@@ -194,6 +206,10 @@ _Avoid_: MA (unqualified)
 **Warm-up** (`is_warmup`) · _giai đoạn khởi động_:
 The leading sessions in which an indicator lacks its required inputs and is NULL.
 _Avoid_: burn-in (the convergence span used to compare implementations)
+
+**Free-float shares** (`free_float_shares`) · _cổ phiếu tự do chuyển nhượng_:
+Point-in-time shares outstanding minus restricted holdings; the denominator of `turnover_ratio`.
+_Avoid_: shares outstanding (a different count)
 
 **Volume ratio** (`volume_ratio`) · _tỷ lệ khối lượng_:
 A session's matched quantity over its 20-session average matched quantity.
@@ -277,8 +293,8 @@ _Avoid_: reusing the daily column name for a period value
 The latest session or timestamp a visual is built from; shown on every page, one per page.
 _Avoid_: last updated, refresh time
 
-**Colour role** (`colour_up`, `colour_down`, `colour_ceiling`, `colour_floor`, `colour_reference`) · _màu tăng / giảm / trần / sàn / tham chiếu_:
-A named meaning a colour carries; values live in `config/palette.yml`.
+**Colour role** (`up`, `down`, `ceiling`, `floor`, `reference`, ... in `config/palette.yml`) · _màu tăng / giảm / trần / sàn / tham chiếu_:
+A named meaning a colour carries; the config key is the role, its value is set per theme.
 _Avoid_: green, red (as names)
 
 **Secondary encoding** (`secondary_encoding`) · _mã hoá phụ_:

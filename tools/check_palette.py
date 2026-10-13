@@ -167,17 +167,47 @@ def distance(c1: str, c2: str, vision: str = "normal") -> float:
     return ciede2000(lab1, lab2)
 
 
-def check_rule(rule: dict, colours: dict[str, str]) -> list[tuple[bool, str]]:
-    """Return one (ok, line) per measured pair."""
-    def colour(name: str) -> str:
-        if name not in colours:
-            raise KeyError(name)
-        return colours[name]
+RULE_FIELDS = {
+    "contrast": ("fg", "bg", "min"),
+    "distance": ("pairs", "min"),
+    "distance_all": ("colours", "min"),
+    "max_chroma": ("colours", "max"),
+}
 
+
+def config_errors(config: object) -> list[str]:
+    """Structural problems that make the config unreadable (exit 2), not a failed rule."""
+    if not isinstance(config, dict) or not isinstance(config.get("themes"), dict):
+        return ["`themes` must be a mapping of theme name to colours"]
+    if not isinstance(config.get("rules"), list):
+        return ["`rules` must be a list"]
+    errors = []
+    for i, rule in enumerate(config["rules"]):
+        kind = rule.get("kind") if isinstance(rule, dict) else None
+        if kind not in RULE_FIELDS:
+            errors.append(f"rule {i}: unknown kind {kind!r} (known: {', '.join(RULE_FIELDS)})")
+            continue
+        missing = [f for f in ("name", *RULE_FIELDS[kind]) if f not in rule]
+        if missing:
+            errors.append(f"rule {i}: missing {', '.join(missing)}")
+        unknown_vision = set(rule.get("vision", [])) - set(VISIONS)
+        if unknown_vision:
+            errors.append(f"rule {i}: unknown vision {sorted(unknown_vision)}")
+    for theme, colours in config["themes"].items():
+        for name, value in colours.items():
+            try:
+                parse_hex(str(value))
+            except ValueError as exc:
+                errors.append(f"[{theme}] {name}: {exc}")
+    return errors
+
+
+def check_rule(rule: dict, colours: dict[str, str]) -> list[tuple[bool, str]]:
+    """Return one (ok, line) per measured pair; KeyError names a colour that is missing."""
     lines = []
     if rule["kind"] == "contrast":
         for fg, bg in itertools.product(rule["fg"], rule["bg"]):
-            value = contrast(colour(fg), colour(bg))
+            value = contrast(colours[fg], colours[bg])
             lines.append((value >= rule["min"], f"{fg} on {bg}: {value:.2f}:1 (min {rule['min']})"))
     elif rule["kind"] in ("distance", "distance_all"):
         pairs = (
@@ -185,46 +215,56 @@ def check_rule(rule: dict, colours: dict[str, str]) -> list[tuple[bool, str]]:
             else list(itertools.combinations(rule["colours"], 2))
         )
         for (a, b), vision in itertools.product(pairs, rule.get("vision", ["normal"])):
-            value = distance(colour(a), colour(b), vision)
+            value = distance(colours[a], colours[b], vision)
             line = f"{a} vs {b}, {vision}: ΔE00 {value:.1f} (min {rule['min']})"
             lines.append((value >= rule["min"], line))
-    elif rule["kind"] == "max_chroma":
+    else:  # max_chroma; config_errors() has rejected every other kind
         for name in rule["colours"]:
-            value = oklch_chroma(colour(name))
+            value = oklch_chroma(colours[name])
             line = f"{name}: OKLCH chroma {value:.3f} (max {rule['max']})"
             lines.append((value <= rule["max"], line))
-    else:
-        raise ValueError(f"unknown rule kind {rule['kind']!r}")
     return lines
 
 
-def check(config_path: Path, verbose: bool = True) -> int:
-    try:
-        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        themes, rules = config["themes"], config["rules"]
-    except (OSError, yaml.YAMLError, KeyError, TypeError) as exc:
-        print(f"⚪ not run: cannot read {config_path}: {exc}", file=sys.stderr)
-        return 2
-    failed = 0
-    for theme, colours in themes.items():
-        for rule in rules:
+def failed_rules(config: dict, report: bool = True) -> set[tuple[str, str]]:
+    """Return the (theme, rule name) pairs that fail; print the report when asked."""
+    failed = set()
+    for theme, colours in config["themes"].items():
+        for rule in config["rules"]:
             try:
                 results = check_rule(rule, colours)
             except KeyError as exc:
-                failed += 1
-                print(f"🔴 [{theme}] {rule['name']}: colour {exc} is not defined")
+                failed.add((theme, rule["name"]))
+                if report:
+                    print(f"🔴 [{theme}] {rule['name']}: colour {exc} is not defined")
                 continue
             bad = [line for ok, line in results if not ok]
-            failed += bool(bad)
-            symbol = "🔴" if bad else "✅"
-            print(f"{symbol} [{theme}] {rule['name']} ({len(results) - len(bad)}/{len(results)})")
-            for line in bad if not verbose else [line for _, line in results]:
-                print(f"     {line}")
-    return 1 if failed else 0
+            if bad:
+                failed.add((theme, rule["name"]))
+            if report:
+                symbol, passed = "🔴" if bad else "✅", len(results) - len(bad)
+                print(f"{symbol} [{theme}] {rule['name']} ({passed}/{len(results)})")
+                for _, line in results:
+                    print(f"     {line}")
+    return failed
+
+
+def check(config_path: Path) -> int:
+    try:
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        print(f"⚪ not run: cannot read {config_path}: {exc}", file=sys.stderr)
+        return 2
+    errors = config_errors(config)
+    for error in errors:
+        print(f"⚪ not run: {config_path}: {error}", file=sys.stderr)
+    if errors:
+        return 2
+    return 1 if failed_rules(config) else 0
 
 
 def self_test() -> int:
-    """Known answers from the literature, plus planted palettes that must fail."""
+    """Known answers from the literature; each planted palette fails exactly its own rule."""
     # Sharma, Wu and Dalal (2005), test data pairs 1, 7, 17 and 25.
     sharma = [
         ((50.0, 2.6772, -79.7751), (50.0, 0.0, -82.7485), 2.0425),
@@ -247,35 +287,53 @@ def self_test() -> int:
         max(abs(x - y) for x, y in zip(linear_rgb(g, v), linear_rgb(g), strict=True)) < 2e-3
         for g in ("#202020", "#808080", "#E0E0E0") for v in CVD_MATRICES
     )
+    # Protanopes lack long-wave cones, so red looks much darker to them than to
+    # deuteranopes; swapping the two matrices fails this.
+    red_luminance = {
+        v: sum(w * c for w, c in zip((0.2126, 0.7152, 0.0722), linear_rgb("#FF0000", v),
+                                     strict=True))
+        for v in ("protanopia", "deuteranopia")
+    }
+    checks["protanopia darkens red more than deuteranopia"] = (
+        red_luminance["protanopia"] < red_luminance["deuteranopia"] / 2
+    )
     checks["deuteranopia collapses pure red vs green more than normal vision"] = (
         distance("#FF0000", "#00FF00", "deuteranopia") < distance("#FF0000", "#00FF00") / 2
     )
 
-    base = {
-        "rules": [
-            {"name": "text contrast", "kind": "contrast", "fg": ["text"], "bg": ["background"],
-             "min": 4.5},
-            {"name": "up vs down", "kind": "distance", "pairs": [["up", "down"]],
-             "vision": list(VISIONS), "min": 8},
-            {"name": "neutral midpoint", "kind": "max_chroma", "colours": ["neutral"], "max": 0.02},
-        ],
-    }
+    rules = [
+        {"name": "text contrast", "kind": "contrast", "fg": ["text"], "bg": ["background"],
+         "min": 4.5},
+        {"name": "up vs down", "kind": "distance", "pairs": [["up", "down"]],
+         "vision": list(VISIONS), "min": 8},
+        {"name": "neutral midpoint", "kind": "max_chroma", "colours": ["neutral"], "max": 0.02},
+    ]
     good = {"text": "#1A1A1A", "background": "#FFFFFF", "up": "#00704A", "down": "#E8833A",
             "neutral": "#EEEEEE"}
     cases = {
-        "control palette passes": (good, 0),
-        "planted low-contrast text fails": ({**good, "text": "#9A9A9A"}, 1),
-        "planted red/green pair at equal lightness fails under CVD": (
-            {**good, "up": "#5F8F3A", "down": "#B8653F"}, 1
+        "control palette fails no rule": (good, set()),
+        "planted low-contrast text fails only text contrast": (
+            {**good, "text": "#9A9A9A"}, {"text contrast"}
         ),
-        "planted yellow midpoint fails": ({**good, "neutral": "#F5E6A0"}, 1),
-        "planted missing colour fails": ({k: v for k, v in good.items() if k != "down"}, 1),
+        "planted equal-lightness red/green fails only up vs down": (
+            {**good, "up": "#5F8F3A", "down": "#B8653F"}, {"up vs down"}
+        ),
+        "planted yellow midpoint fails only neutral midpoint": (
+            {**good, "neutral": "#F5E6A0"}, {"neutral midpoint"}
+        ),
+        "planted missing colour fails only the rule that names it": (
+            {k: v for k, v in good.items() if k != "down"}, {"up vs down"}
+        ),
     }
+    for name, (colours, expected) in cases.items():
+        got = failed_rules({"themes": {"t": colours}, "rules": rules}, report=False)
+        checks[name] = {rule for _, rule in got} == expected
     with tempfile.TemporaryDirectory() as tmp:
-        for name, (colours, expected) in cases.items():
-            path = Path(tmp) / "palette.yml"
-            path.write_text(yaml.safe_dump({**base, "themes": {"t": colours}}), encoding="utf-8")
-            checks[name] = check(path, verbose=False) == expected
+        broken = Path(tmp) / "palette.yml"
+        broken.write_text(yaml.safe_dump(
+            {"themes": {"t": good}, "rules": [{"name": "x", "kind": "hue_angle"}]}
+        ), encoding="utf-8")
+        checks["an unknown rule kind is a config error, exit 2"] = check(broken) == 2
     checks["an unknown argument is rejected with exit 2"] = subprocess.run(  # noqa: S603
         [sys.executable, __file__, "--bogus"], capture_output=True, timeout=60
     ).returncode == 2
