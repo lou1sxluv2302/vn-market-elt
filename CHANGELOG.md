@@ -13,6 +13,8 @@ All notable changes to this project are documented here. The format follows
   to commit SHAs, read-only permissions.
 - `tools/run_self_tests.py` finds every `--self-test` with `ast` and runs it;
   `tools/check_pins.py` keeps tool versions equal across pyproject, hooks and workflows.
+- pre-commit `check-yaml`: an unquoted `: ` in a step name made GitHub reject a
+  whole workflow without running a single job.
 - Agent workflow skills in `.claude/skills/`: `start-step`, `ship-pr`,
   `security-audit`, `release` (owner-invoked) and `harvest-knowledge` (#2).
 - Engineering skills from mattpocock/skills wired in: `docs/agents/` configuration
