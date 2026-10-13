@@ -10,15 +10,17 @@ Two stacks. The agent writes and plans; **the owner applies** (ADR-0020, `infra/
 Environment values live in git-ignored `prod.tfvars` files; copy each `prod.example.tfvars`.
 Run every command from the repository root with your own Google login (application-default credentials); no key file is ever used.
 
+In Windows PowerShell 5.1, quote every argument that starts with `-` and contains a dot or `=` (`"-var-file=prod.tfvars"`): PowerShell otherwise splits it and Terraform reports "Too many command line arguments". The commands below are quoted for that reason; they also work in bash.
+
 ## First run
 
 ```bash
-terraform -chdir=infra/terraform/bootstrap init
-terraform -chdir=infra/terraform/bootstrap plan -var-file=prod.tfvars -out=bootstrap.tfplan
-terraform -chdir=infra/terraform/bootstrap apply bootstrap.tfplan
-terraform -chdir=infra/terraform/main init -backend-config="bucket=<project-id>-tfstate"
-terraform -chdir=infra/terraform/main plan -var-file=prod.tfvars -out=main.tfplan
-terraform -chdir=infra/terraform/main apply main.tfplan
+terraform "-chdir=infra/terraform/bootstrap" init
+terraform "-chdir=infra/terraform/bootstrap" plan "-var-file=prod.tfvars" "-out=bootstrap.tfplan"
+terraform "-chdir=infra/terraform/bootstrap" apply "bootstrap.tfplan"
+terraform "-chdir=infra/terraform/main" init "-backend-config=bucket=<project-id>-tfstate"
+terraform "-chdir=infra/terraform/main" plan "-var-file=prod.tfvars" "-out=main.tfplan"
+terraform "-chdir=infra/terraform/main" apply "main.tfplan"
 ```
 
 Close the `default` network the Compute API creates: it opens port 22, RDP and ICMP to the internet (spec §14.3 says port 22 is never open). Nothing is placed in it, so remove it right after the bootstrap apply:
