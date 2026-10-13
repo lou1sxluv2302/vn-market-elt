@@ -21,11 +21,14 @@ no key file exists and your application-default credentials are not changed.
 
 ```bash
 python -m vnmarket.el.load_v1_history
+python -m vnmarket.el.load_v1_history --apply --until-ingest-date 2026-08-03
 python -m vnmarket.el.load_v1_history --apply
 ```
 
 The first command is a dry run: it checks every file against v1's schema and
-prints counts. The second loads. It ends with two lines that must both be ✅: the
+BigQuery's column-name rules and prints counts. The second loads only the first
+pull - a small smoke load that meets BigQuery's own rules early. The third loads
+the rest (files already loaded are skipped). It ends with two lines that must both be ✅: the
 rows of every newly loaded file counted in BigQuery, and v1's files unchanged.
 
 ## Prove it
@@ -61,3 +64,6 @@ Seen on the first run (2026-10-13): BigQuery refused a nested column of
 `company_overview` (its JSON type cannot be loaded from parquet). Nothing had
 been written; the local folder claimed all 145 files. Fixed in the loader
 (nested and all-null reference columns load as text) and case 2 applied.
+The second run that day hit BigQuery's reserved column prefixes (`_FILE_`): the
+lineage columns were renamed `_source_file` and `_source_sha256`, and the loader
+now checks every column name against `bigquery_reserved_prefixes` before loading.

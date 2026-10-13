@@ -96,7 +96,7 @@ def latest_sql(table: str, where: str = "") -> str:
         from {table} {where}
         qualify row_number() over (
             partition by _source_id, symbol, session_date
-            order by _ingested_at desc, _ingest_partition desc, _file_name desc) = 1"""
+            order by _ingested_at desc, _ingest_partition desc, _source_file desc) = 1"""
 
 
 def differing(con: duckdb.DuckDBPyConnection, left: str, right: str, keys: list[str]) -> list:
@@ -113,11 +113,13 @@ def differing(con: duckdb.DuckDBPyConnection, left: str, right: str, keys: list[
 
 
 def compare_files(parquet_stats: pa.Table, raw_stats: pa.Table) -> list[str]:
-    """Check 1. Both: _file_name + SIGNATURE_COLUMNS. One line per file that differs."""
+    """Check 1. Both: _source_file + SIGNATURE_COLUMNS. One line per file that differs."""
     con = duckdb.connect()
     con.register("p", parquet_stats)
     con.register("r", raw_stats)
-    return [f"{name}: rows or sums differ" for (name,) in differing(con, "p", "r", ["_file_name"])]
+    return [
+        f"{name}: rows or sums differ" for (name,) in differing(con, "p", "r", ["_source_file"])
+    ]
 
 
 def classify(
@@ -187,7 +189,7 @@ def parquet_file_stats(files: list, modulus: int) -> pa.Table:
     for item in files:
         con.register("t", pq.read_table(item.path, columns=["session_date", *PRICE_COLUMNS]))
         row = con.execute(f"select {sig} from t").to_arrow_table()
-        parts.append(row.append_column("_file_name", pa.array([item.relative])))
+        parts.append(row.append_column("_source_file", pa.array([item.relative])))
         con.unregister("t")
     return pa.concat_tables(parts)
 
@@ -230,7 +232,7 @@ def run() -> int:
         f"where _source_id = '{fallback}'"
     )
     files = ohlcv_files(bronze, cfg, until)
-    raw_stats = bq(f"select _file_name, {signature('bigquery', modulus)} from {table} group by 1")
+    raw_stats = bq(f"select _source_file, {signature('bigquery', modulus)} from {table} group by 1")
     problems = compare_files(parquet_file_stats(files, modulus), raw_stats)
     for line in problems[:20]:
         print(f"     {line}")
@@ -286,11 +288,11 @@ def run() -> int:
     for name, path in reference_files(bronze, cfg).items():
         ref = f"`{project}.{cfg['dataset']}.{cfg['reference']['table_prefix']}{name}`"
         got = bq(
-            f"select _file_sha256, count(*) as n from {ref} "
+            f"select _source_sha256, count(*) as n from {ref} "
             "group by 1 order by max(_loaded_at) desc limit 1"
         ).to_pylist()
         want = (sha256_of(path), pq.ParquetFile(path).metadata.num_rows)
-        if not got or (got[0]["_file_sha256"], got[0]["n"]) != want:
+        if not got or (got[0]["_source_sha256"], got[0]["n"]) != want:
             ref_ok = False
             print(f"     {name}: newest snapshot {got[:1]} vs file rows {want[1]}")
     verdicts["reference lists = parquet (newest snapshot)"] = ref_ok
@@ -395,16 +397,16 @@ def self_test() -> int:
     sig = signature("duckdb", modulus)
     con.register("h", rows((primary, "AAA", "2026-07-30", 100), (primary, "AAA", "2026-07-31", 99)))
     con.register("s", rows((primary, "AAA", "2026-07-30", 99), (primary, "AAA", "2026-07-31", 100)))
-    honest = con.execute(f"select 'f' as _file_name, {sig} from h").to_arrow_table()
-    swapped = con.execute(f"select 'f' as _file_name, {sig} from s").to_arrow_table()
+    honest = con.execute(f"select 'f' as _source_file, {sig} from h").to_arrow_table()
+    swapped = con.execute(f"select 'f' as _source_file, {sig} from s").to_arrow_table()
     doubled = con.execute(
-        f"select 'f' as _file_name, {sig} from (select * from h union all select * from h)"
+        f"select 'f' as _source_file, {sig} from (select * from h union all select * from h)"
     ).to_arrow_table()
     two_files = pa.concat_tables(
         [
             honest,
             honest.set_column(
-                honest.schema.get_field_index("_file_name"), "_file_name", pa.array(["g"])
+                honest.schema.get_field_index("_source_file"), "_source_file", pa.array(["g"])
             ),
         ]
     )
@@ -430,7 +432,7 @@ def self_test() -> int:
                     dt.date(2026, 8, 7),
                     dt.date(2026, 8, 3),
                 ],
-                "_file_name": ["a", "b", "c"],
+                "_source_file": ["a", "b", "c"],
                 **{c: pa.array([1, 2, 3], pa.int64()) for c in PRICE_COLUMNS},
             }
         ),

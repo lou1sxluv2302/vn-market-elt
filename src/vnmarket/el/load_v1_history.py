@@ -2,7 +2,7 @@
 
 Raw is a log (ELT): every row of every pull lands as it is - with v1's own
 lineage columns (`_source_id`, `_batch_id`, `_ingested_at`, `_payload_hash`)
-plus `_file_name` and `_ingest_partition` - so price revisions between pulls
+plus `_source_file` and `_ingest_partition` - so price revisions between pulls
 (dividend and split re-adjustments) stay visible. Deduplication happens later,
 in dbt staging. v1 is only read; the run fails if v1's files change meanwhile.
 
@@ -10,7 +10,7 @@ What is loaded (config/el.yml, `v1_history`):
 - daily OHLCV from the primary and the fallback source, one file at a time;
   every file is checked against v1's schema before anything is loaded;
 - the flat reference lists (symbols, exchanges, industries), as snapshots: a file
-  is loaded again only when its content changed (`_file_sha256`).
+  is loaded again only when its content changed (`_source_sha256`).
 
 Files already loaded are remembered in dlt state (stored in the destination with
 the data, in the same load package), so a rerun loads only new files. Column
@@ -109,6 +109,28 @@ def check_schema(item: OhlcvFile) -> int:
     return meta.metadata.num_rows
 
 
+OHLCV_LINEAGE = ["_source_file", "_ingest_partition"]
+REFERENCE_LINEAGE = ["_source_sha256", "_loaded_at"]
+
+
+def reserved_names(bronze_dir: Path, cfg: dict, files: list[OhlcvFile]) -> list[str]:
+    """Columns whose name BigQuery refuses (reserved prefixes, case-insensitive). A local
+    DuckDB destination accepts them, so only this check stops them before the cloud load."""
+    prefixes = load_config("el")["bigquery_reserved_prefixes"]
+    tables: dict[str, list[str]] = {}
+    for item in files:
+        tables.setdefault(cfg["ohlcv"]["table"], []).extend(pq.read_schema(item.path).names)
+    tables.setdefault(cfg["ohlcv"]["table"], []).extend(OHLCV_LINEAGE)
+    for name, path in reference_files(bronze_dir, cfg).items():
+        tables[name] = pq.read_schema(path).names + REFERENCE_LINEAGE
+    return sorted(
+        f"{table}.{column}"
+        for table, columns in tables.items()
+        for column in set(columns)
+        if column.lower().startswith(tuple(prefixes))
+    )
+
+
 def reference_files(bronze_dir: Path, cfg: dict) -> dict[str, Path]:
     ref = cfg["reference"]
     paths = {
@@ -188,8 +210,13 @@ def build_source(
                 continue
             yield with_columns(
                 table,
-                _file_name=(item.relative, pa.string()),
-                _ingest_partition=(item.ingest_date, pa.date32()),
+                **dict(
+                    zip(
+                        OHLCV_LINEAGE,
+                        [(item.relative, pa.string()), (item.ingest_date, pa.date32())],
+                        strict=True,
+                    )
+                ),
             )
 
     def reference(name: str, path: Path) -> Any:
@@ -201,8 +228,13 @@ def build_source(
                 return
             yield with_columns(
                 loadable(pq.read_table(path)),
-                _file_sha256=(digest, pa.string()),
-                _loaded_at=(loaded_at, pa.timestamp("us", tz="UTC")),
+                **dict(
+                    zip(
+                        REFERENCE_LINEAGE,
+                        [(digest, pa.string()), (loaded_at, pa.timestamp("us", tz="UTC"))],
+                        strict=True,
+                    )
+                ),
             )
             state["sha256"] = digest
 
@@ -234,6 +266,9 @@ def load(pipeline: Any, bronze_dir: Path, cfg: dict, until: dt.date | None, bigq
 
     files = ohlcv_files(bronze_dir, cfg, until)
     expected = {item.relative: check_schema(item) for item in files}  # refuse before loading
+    refused = reserved_names(bronze_dir, cfg, files)
+    if refused:
+        raise InputError(f"column names BigQuery refuses: {refused}")
     before = tree_fingerprint([bronze_dir])
     skipped_empty: list[str] = []
     try:
@@ -248,7 +283,7 @@ def load(pipeline: Any, bronze_dir: Path, cfg: dict, until: dt.date | None, bigq
         with pipeline.sql_client() as client:
             qualified = client.make_qualified_table_name(cfg["ohlcv"]["table"])
             rows = client.execute_sql(
-                f"select _file_name, count(*) from {qualified} group by _file_name"
+                f"select _source_file, count(*) from {qualified} group by _source_file"
             )
             counts = {name: n for name, n in rows}
     wrong = [f for f in wanted if counts.get(f) != expected[f]]
@@ -363,7 +398,7 @@ def self_test() -> int:
         )
         fx.write(paths["first_partition"] / "e.parquet", fx.ohlcv(primary, "2026-08-03", []))
         first_code = load(pipeline, bronze, cfg, cutoff, bigquery=False)
-        first = query(tmp, f"select count(*), count(distinct _file_name) from {table}")[0]
+        first = query(tmp, f"select count(*), count(distinct _source_file) from {table}")[0]
         revisions = query(
             tmp,
             f"select count(*) from {table} where symbol = 'AAA' and session_date = '2026-07-31'",
@@ -371,7 +406,7 @@ def self_test() -> int:
         backups = query(tmp, f"select count(*) from {table} where symbol = 'ZZZ'")
         lineage = query(
             tmp,
-            f"select count(*) from {table} where _file_name is null "
+            f"select count(*) from {table} where _source_file is null "
             "or _ingest_partition is null or _source_id is null",
         )
         ref_first = query(tmp, f"select count(*) from {ref_table}")
@@ -449,10 +484,27 @@ def self_test() -> int:
         )
         # Planted: dlt's state says a file is loaded, but the destination lost its rows.
         with duckdb.connect(str(tmp / "dest.duckdb")) as con:
-            con.execute(f"delete from {table} where _file_name like '%/b.parquet'")
+            con.execute(f"delete from {table} where _source_file like '%/b.parquet'")
         lost_code = load(pipeline, bronze, cfg, None, bigquery=False)
         checks["planted file in state but missing from the destination fails the run"] = (
             lost_code == 1
+        )
+
+    with tempfile.TemporaryDirectory() as name:
+        tmp = Path(name)
+        bronze, paths, pipeline = setup(tmp)
+        # Planted: a column name BigQuery refuses (prefix _FILE_), fine in DuckDB.
+        fx.write(
+            paths["reference_dir"] / "industries_icb.parquet",
+            fx.pa.table({"symbol": ["AAA"], "_FILE_origin": ["x"]}),
+        )
+        try:
+            load(pipeline, bronze, cfg, None, bigquery=False)
+            stopped = False
+        except InputError as exc:
+            stopped = "_FILE_origin" in str(exc)
+        checks["planted BigQuery-reserved column name is refused before loading"] = (
+            stopped and not (tmp / "dest.duckdb").exists()
         )
 
     checks["an unknown argument is rejected with exit 2"] = (

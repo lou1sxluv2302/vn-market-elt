@@ -47,3 +47,8 @@ reconcile_v1:
   # Position weight for the per-symbol checksum: a value moved between two dates,
   # or +x on one date and -x on another, changes the weighted sum.
   checksum_modulus: 1009
+
+# Column-name prefixes BigQuery refuses, case-insensitive (its error message and
+# "Column names" in the BigQuery docs). Checked before loading, because a local
+# DuckDB destination accepts them and only the cloud load would fail.
+bigquery_reserved_prefixes: [_partition, _table_, _file_, _row_timestamp, __root__, _colidentifier, _dremel_, _change_]
