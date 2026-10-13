@@ -1,0 +1,109 @@
+version: 2
+
+models:
+  - name: int_prices__chosen_source
+    description: One row per (symbol, trade_date); the primary source first.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, trade_date]
+
+  - name: int_prices__flagged
+    description: Price rows with is_stale and v1's bad-row flags.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, trade_date]
+
+unit_tests:
+  - name: primary_source_wins_when_its_name_sorts_last
+    description: >
+      Primary sorts last by name: an ascending ORDER BY on the name fails. Unknown sources are ignored.
+    model: int_prices__chosen_source
+    overrides:
+      vars:
+        primary_price_source: z_primary
+        fallback_price_source: a_fallback
+    given:
+      - input: ref('stg_vnstock__ohlcv_daily')
+        rows:
+          - {_source_id: z_primary, symbol: AAA, trade_date: 2026-07-31, close_vnd: 100}
+          - {_source_id: a_fallback, symbol: AAA, trade_date: 2026-07-31, close_vnd: 101}
+          - {_source_id: a_fallback, symbol: BBB, trade_date: 2026-07-31, close_vnd: 50}
+          - {_source_id: other, symbol: CCC, trade_date: 2026-07-31, close_vnd: 7}
+    expect:
+      rows:
+        - {_source_id: z_primary, symbol: AAA, trade_date: 2026-07-31, close_vnd: 100}
+        - {_source_id: a_fallback, symbol: BBB, trade_date: 2026-07-31, close_vnd: 50}
+
+  - name: primary_source_wins_when_its_name_sorts_first
+    description: >
+      Primary sorts first by name: a descending ORDER BY on the name fails.
+    model: int_prices__chosen_source
+    overrides:
+      vars:
+        primary_price_source: a_primary
+        fallback_price_source: z_fallback
+    given:
+      - input: ref('stg_vnstock__ohlcv_daily')
+        rows:
+          - {_source_id: a_primary, symbol: AAA, trade_date: 2026-07-31, close_vnd: 100}
+          - {_source_id: z_fallback, symbol: AAA, trade_date: 2026-07-31, close_vnd: 101}
+          - {_source_id: z_fallback, symbol: BBB, trade_date: 2026-07-31, close_vnd: 50}
+          - {_source_id: other, symbol: CCC, trade_date: 2026-07-31, close_vnd: 7}
+    expect:
+      rows:
+        - {_source_id: a_primary, symbol: AAA, trade_date: 2026-07-31, close_vnd: 100}
+        - {_source_id: z_fallback, symbol: BBB, trade_date: 2026-07-31, close_vnd: 50}
+
+  - name: stale_is_no_trade_with_the_previous_close
+    description: >
+      Stale needs both no trade and the same close as the symbol's previous row; the first
+      row of a symbol is null; another symbol's row never counts as previous; a flagged row
+      (here a bad open) still counts as previous, as in v1.
+    model: int_prices__flagged
+    given:
+      - input: ref('int_prices__chosen_source')
+        rows:
+          - {symbol: AAA, trade_date: 2026-07-27, open_vnd: 99, high_vnd: 10, low_vnd: 10, close_vnd: 10, match_qty: 100}
+          - {symbol: AAA, trade_date: 2026-07-28, open_vnd: 10, high_vnd: 10, low_vnd: 10, close_vnd: 10, match_qty: 0}
+          - {symbol: AAA, trade_date: 2026-07-29, open_vnd: 10, high_vnd: 10, low_vnd: 10, close_vnd: 10, match_qty: 0}
+          - {symbol: AAA, trade_date: 2026-07-30, open_vnd: 11, high_vnd: 11, low_vnd: 11, close_vnd: 11, match_qty: 0}
+          - {symbol: BBB, trade_date: 2026-07-29, open_vnd: 10, high_vnd: 10, low_vnd: 10, close_vnd: 10, match_qty: 0}
+      - input: ref('known_bad_dates')
+        rows: []
+    expect:
+      rows:
+        - {symbol: AAA, trade_date: 2026-07-27, is_stale: false}
+        - {symbol: AAA, trade_date: 2026-07-28, is_stale: true}
+        - {symbol: AAA, trade_date: 2026-07-29, is_stale: true}
+        - {symbol: AAA, trade_date: 2026-07-30, is_stale: false}
+        - {symbol: BBB, trade_date: 2026-07-29, is_stale: null}
+
+  - name: bad_row_flags_match_v1
+    description: Each planted fault raises exactly its own flag; the control row raises none.
+    model: int_prices__flagged
+    given:
+      - input: ref('int_prices__chosen_source')
+        rows:
+          - {symbol: OK, trade_date: 2026-07-29, open_vnd: 10, high_vnd: 12, low_vnd: 9, close_vnd: 11, match_qty: 1}
+          - {symbol: NUL, trade_date: 2026-07-29, open_vnd: null, high_vnd: 12, low_vnd: 9, close_vnd: 11, match_qty: 1}
+          - {symbol: NEG, trade_date: 2026-07-29, open_vnd: 0, high_vnd: 0, low_vnd: 0, close_vnd: 0, match_qty: 1}
+          - {symbol: HIC, trade_date: 2026-07-29, open_vnd: 10, high_vnd: 12, low_vnd: 9, close_vnd: 13, match_qty: 1}
+          - {symbol: LOC, trade_date: 2026-07-29, open_vnd: 10, high_vnd: 12, low_vnd: 9, close_vnd: 8, match_qty: 1}
+          - {symbol: LHI, trade_date: 2026-07-29, open_vnd: 11, high_vnd: 9, low_vnd: 12, close_vnd: 11, match_qty: 1}
+          - {symbol: OPN, trade_date: 2026-07-29, open_vnd: 14, high_vnd: 12, low_vnd: 9, close_vnd: 11, match_qty: 1}
+          - {symbol: BAD, trade_date: 2018-07-23, open_vnd: 10, high_vnd: 12, low_vnd: 9, close_vnd: 11, match_qty: 1}
+      - input: ref('known_bad_dates')
+        rows:
+          - {bad_date: 2018-07-23}
+    expect:
+      rows:
+        - {symbol: OK, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: false}
+        - {symbol: NUL, is_bad_null: true, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: null}
+        - {symbol: NEG, is_bad_null: false, is_bad_nonpositive: true, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: false}
+        - {symbol: HIC, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: true, is_bad_known_date: false, is_open_outside_range: false}
+        - {symbol: LOC, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: true, is_bad_known_date: false, is_open_outside_range: false}
+        - {symbol: LHI, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: true, is_bad_known_date: false, is_open_outside_range: true}
+        - {symbol: OPN, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: true}
+        - {symbol: BAD, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: true, is_open_outside_range: false}

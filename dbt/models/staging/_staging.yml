@@ -1,0 +1,42 @@
+version: 2
+
+models:
+  - name: stg_vnstock__ohlcv_daily
+    description: Newest pull of each (source, symbol, trade_date) from the raw log.
+    columns:
+      - name: match_qty
+        description: Matched board-lot quantity (v1 `volume`).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [_source_id, symbol, trade_date]
+
+  - name: stg_vnstock__symbols
+    description: Newest symbol list; exchange normalised; delisted symbols have no exchange.
+    columns:
+      - name: symbol
+        data_tests: [unique, not_null]
+
+unit_tests:
+  - name: latest_pull_wins_per_source
+    description: >
+      Each sort key decides on its own: the newest _ingested_at wins even when its
+      partition and file name sort earlier (AAA); on equal _ingested_at the newer
+      partition wins (BBB); on equal both, the later file wins (CCC); sources stay apart.
+    model: stg_vnstock__ohlcv_daily
+    given:
+      - input: source('vnstock', 'ohlcv_daily')
+        rows:
+          - {symbol: AAA, session_date: 2026-07-31, close_vnd: 1, _source_id: p, _ingested_at: "2026-08-07 09:00:00+00", _ingest_partition: 2026-08-01, _source_file: a}
+          - {symbol: AAA, session_date: 2026-07-31, close_vnd: 2, _source_id: p, _ingested_at: "2026-08-03 09:00:00+00", _ingest_partition: 2026-08-09, _source_file: z}
+          - {symbol: BBB, session_date: 2026-07-31, close_vnd: 3, _source_id: p, _ingested_at: "2026-08-03 09:00:00+00", _ingest_partition: 2026-08-09, _source_file: a}
+          - {symbol: BBB, session_date: 2026-07-31, close_vnd: 4, _source_id: p, _ingested_at: "2026-08-03 09:00:00+00", _ingest_partition: 2026-08-03, _source_file: z}
+          - {symbol: CCC, session_date: 2026-07-31, close_vnd: 5, _source_id: p, _ingested_at: "2026-08-03 09:00:00+00", _ingest_partition: 2026-08-03, _source_file: z}
+          - {symbol: CCC, session_date: 2026-07-31, close_vnd: 6, _source_id: p, _ingested_at: "2026-08-03 09:00:00+00", _ingest_partition: 2026-08-03, _source_file: a}
+          - {symbol: AAA, session_date: 2026-07-31, close_vnd: 7, _source_id: f, _ingested_at: "2026-08-01 09:00:00+00", _ingest_partition: 2026-08-01, _source_file: c}
+    expect:
+      rows:
+        - {_source_id: p, symbol: AAA, trade_date: 2026-07-31, close_vnd: 1}
+        - {_source_id: p, symbol: BBB, trade_date: 2026-07-31, close_vnd: 3}
+        - {_source_id: p, symbol: CCC, trade_date: 2026-07-31, close_vnd: 5}
+        - {_source_id: f, symbol: AAA, trade_date: 2026-07-31, close_vnd: 7}

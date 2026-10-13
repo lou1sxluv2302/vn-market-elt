@@ -1,0 +1,2 @@
+bad_date,reason,as_of,source_ref
+2018-07-23,v1 drops every row of this date (flag bad_known_date); the cause was not recorded,2026-10-13,v1 transform/rebuild_silver.py BAD_DATES

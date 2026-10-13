@@ -1,0 +1,10 @@
+exchange,instrument_class,price_from_vnd,tick_vnd,effective_from,effective_to,as_of,evidence,source_ref
+HOSE,stock,0,10,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §4
+HOSE,stock,10000,50,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §4
+HOSE,stock,50000,100,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §4
+HNX,stock,0,100,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §4
+UPCOM,stock,0,100,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §4
+HOSE,etf_cw,0,10,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §4
+HOSE,put_through,0,1,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §4
+HNX,put_through,0,1,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §4
+UPCOM,put_through,0,1,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §4

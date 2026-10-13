@@ -1,0 +1,18 @@
+version: 2
+
+sources:
+  - name: vnstock
+    description: >
+      v1's raw parquet history, loaded append-only by vnmarket.el.load_v1_history (P1).
+      Every pull is kept; latest-wins happens in staging.
+    schema: raw_vnstock
+    tables:
+      - name: ohlcv_daily
+        description: Daily OHLCV, one row per (source, symbol, session_date, pull).
+        columns:
+          - name: _source_file
+            data_tests: [not_null]
+          - name: _ingested_at
+            data_tests: [not_null]
+      - name: ref_symbols_by_exchange
+        description: Snapshots of the symbol list with exchange and instrument type.

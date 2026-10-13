@@ -1,0 +1,26 @@
+{#
+  CI only (DuckDB): create empty source tables with the real column types, so
+  unit tests can introspect their parents. Never runs against BigQuery.
+  Usage: dbt run-operation create_ci_sources --target ci
+#}
+{% macro create_ci_sources() %}
+    {% if target.type != 'duckdb' %}
+        {{ exceptions.raise_compiler_error("create_ci_sources is for the DuckDB CI target only") }}
+    {% endif %}
+    {% set ddl %}
+        create schema if not exists raw_vnstock;
+        create table if not exists raw_vnstock.ohlcv_daily (
+            symbol varchar, session_date date,
+            open_vnd bigint, high_vnd bigint, low_vnd bigint, close_vnd bigint, volume bigint,
+            _source_id varchar, _batch_id varchar, _ingested_at timestamptz, _payload_hash varchar,
+            _source_file varchar, _ingest_partition date
+        );
+        create table if not exists raw_vnstock.ref_symbols_by_exchange (
+            symbol varchar, exchange varchar, type varchar, sid double, organ_short_name varchar,
+            organ_name varchar, product_grp_id varchar, icb_code2 varchar,
+            _source_sha256 varchar, _loaded_at timestamptz
+        );
+    {% endset %}
+    {% do run_query(ddl) %}
+    {{ log("CI source tables created", info=True) }}
+{% endmacro %}
