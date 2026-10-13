@@ -12,11 +12,15 @@ the same as v1; every deliberate difference explained row by row, by its mechani
      - absent_in_v1: only v2 has it, from the primary, and v1's raw table never had the
        key (the P1 residual), up to the count measured in config;
      - stale_from_neighbour: same source and values, only `is_stale` differs, and the
-       symbol's previous row is a source_choice row (is_stale compares with it).
+       symbol's previous row is a source_choice row (is_stale compares with it);
+     - fallback_batch_not_in_log: a v1 row written by a batch that never reached v1's
+       parquet log (P1 measured one, 182 rows), so v2's raw cannot hold it.
    Anything else - a row only v1 has, a row v2 kept that v1's raw table had, a value
    difference on the same source - fails.
 3. exchange: `dim_security` against v1's `dim_security_v2`; may differ only for a
-   symbol whose exchange is inferred on both sides and whose prices differ by source.
+   symbol whose exchange is inferred on both sides, when either its prices differ by
+   source or v1's own rule, run on v1's current prices, gives v2's answer (v1 built its
+   table once, from older prices).
 4. universe, per (symbol, date): a membership difference is explained when the row
    itself, or a row within the previous ADV window of non-stale rows, is explained
    by (2), or the symbol's exchange difference is explained by (3).
@@ -43,11 +47,17 @@ from pathlib import Path
 
 import duckdb
 import pyarrow as pa
+import yaml
 
 from vnmarket.common.config import REPO_ROOT, load_config, load_env, utf8_stdio
 
 VALUE_COLUMNS = ["open_vnd", "high_vnd", "low_vnd", "close_vnd", "match_qty", "stale_int"]
-PRICE_EXPLAINED = {"source_choice", "absent_in_v1", "stale_from_neighbour"}
+PRICE_EXPLAINED = {
+    "source_choice",
+    "absent_in_v1",
+    "stale_from_neighbour",
+    "fallback_batch_not_in_log",
+}
 
 
 # --- SQL shared by BigQuery and DuckDB ----------------------------------------
@@ -112,14 +122,24 @@ def compare_calendar(v2: pa.Table, v1: pa.Table, holidays: pa.Table) -> dict[str
 
 
 def classify_prices(
-    v2: pa.Table, v1: pa.Table, v1_raw_keys: pa.Table, primary: str, fallback: str
+    v2: pa.Table,
+    v1: pa.Table,
+    v1_raw_keys: pa.Table,
+    primary: str,
+    fallback: str,
+    unlogged_batches: list[dt.datetime],
 ) -> pa.Table:
     """Return (symbol, trade_date, category) for every key of either side.
-    v2, v1: symbol, trade_date, VALUE_COLUMNS, source. v1_raw_keys: symbol, trade_date."""
+    v2: symbol, trade_date, VALUE_COLUMNS, source. v1: the same plus ingested_at.
+    v1_raw_keys: symbol, trade_date. unlogged_batches: v1 batches absent from its log."""
     con = duckdb.connect()
     con.register("v2", v2)
     con.register("v1", v1)
     con.register("raw", v1_raw_keys)
+    con.register(
+        "unlogged",
+        pa.table({"ingested_at": pa.array(unlogged_batches, pa.timestamp("us", tz="UTC"))}),
+    )
     same = " and ".join(f"v2.{c} is not distinct from v1.{c}" for c in VALUE_COLUMNS)
     same_but_stale = " and ".join(
         f"v2.{c} is not distinct from v1.{c}" for c in VALUE_COLUMNS if c != "stale_int"
@@ -133,6 +153,8 @@ def classify_prices(
                     when v2.symbol is not null and v1.symbol is not null and {same} then 'equal'
                     when v2.symbol is not null and v1.symbol is not null
                         and v2.source <> v1.source then 'source_choice'
+                    when v1.ingested_at in (select ingested_at from unlogged)
+                        then 'fallback_batch_not_in_log'
                     when v1.symbol is null and v2.source = '{fallback}' then 'source_choice'
                     when v1.symbol is null and v2.source = '{primary}' and r.symbol is null
                         then 'absent_in_v1'
@@ -167,11 +189,15 @@ def count_by(table: pa.Table, column: str) -> dict[str, int]:
     return dict(con.execute(f"select {column}, count(*) from t group by 1").fetchall())
 
 
-def compare_exchange(v2: pa.Table, v1: pa.Table, price_explained: set[str]) -> dict[str, int]:
-    """v2, v1: symbol, exchange, exchange_is_inferred (current period)."""
+def compare_exchange(
+    v2: pa.Table, v1: pa.Table, price_explained: set[str], v1_rule_now: pa.Table
+) -> dict[str, int]:
+    """v2, v1: symbol, exchange, exchange_is_inferred (current period). v1_rule_now:
+    symbol, exchange - v1's inference rule run on v1's current prices."""
     con = duckdb.connect()
     con.register("v2", v2)
     con.register("v1", v1)
+    con.register("now", v1_rule_now)
     con.register("x", pa.table({"symbol": sorted(price_explained) or [""]}))
     return dict(
         con.execute("""
@@ -179,9 +205,12 @@ def compare_exchange(v2: pa.Table, v1: pa.Table, price_explained: set[str]) -> d
             when v2.exchange is not distinct from v1.exchange then 'equal'
             when v2.exchange_is_inferred and v1.exchange_is_inferred
                 and v2.symbol in (select symbol from x) then 'inferred_from_other_prices'
+            when v2.exchange_is_inferred and v1.exchange_is_inferred
+                and v2.exchange = n.exchange then 'v1_table_built_from_older_prices'
             else 'unexplained'
         end, count(*)
         from v2 join v1 using (symbol)
+        left join now as n using (symbol)
         group by 1
     """).fetchall()
     )
@@ -284,10 +313,15 @@ def run(cfg: dict, env: dict) -> int:
         f"from {marts}.fct_price_daily"
     )
     v1_prices = (
-        "select symbol, cast(session_date as date) as trade_date, open_adj as open_vnd, "
-        "high_adj as high_vnd, low_adj as low_vnd, close_adj as close_vnd, volume as match_qty, "
-        "cast(is_stale as integer) as stale_int, _source_id as source from fct_price_daily_adj"
+        "select f.symbol, cast(f.session_date as date) as trade_date, f.open_adj as open_vnd, "
+        "f.high_adj as high_vnd, f.low_adj as low_vnd, f.close_adj as close_vnd, "
+        "f.volume as match_qty, cast(f.is_stale as integer) as stale_int, "
+        "f._source_id as source, b._ingested_at as ingested_at "
+        "from fct_price_daily_adj as f left join bronze_price as b "
+        "on b.symbol = f.symbol and b.session_date = f.session_date"
     )
+    dbt_vars = yaml.safe_load((REPO_ROOT / "dbt" / "dbt_project.yml").read_text("utf-8"))["vars"]
+    unlogged = [dt.datetime.fromisoformat(x) for x in rec["unlogged_v1_batches"]]
 
     with duckdb.connect(str(duck_path), read_only=True) as v1:
         # 1. calendar
@@ -325,29 +359,31 @@ def run(cfg: dict, env: dict) -> int:
         symbols = sorted(differing_symbols(sig_v2, sig_v1, VALUE_COLUMNS))
         rows_v2 = bq(f"{v2_prices} where symbol in unnest(@symbols)", symbols_param(symbols))
         rows_v1 = v1.execute(
-            f"{v1_prices} where symbol in (select unnest($1))", [symbols]
+            f"{v1_prices} where f.symbol in (select unnest($1))", [symbols]
         ).to_arrow_table()
         raw_keys = v1.execute(
             "select symbol, cast(session_date as date) as trade_date from bronze_price "
             "where symbol in (select unnest($1))",
             [symbols],
         ).to_arrow_table()
-        keys = classify_prices(rows_v2, rows_v1, raw_keys, primary, fallback)
+        keys = classify_prices(rows_v2, rows_v1, raw_keys, primary, fallback, unlogged)
         prices = count_by(keys, "category")
         print(
             f"     prices: {len(sig_v2) - len(symbols):,} symbols identical by signature; "
             f"{len(symbols)} compared row by row: {prices}"
         )
-        absent_cap = rec["allowed_residuals"]["absent_in_v1"]
-        verdicts["prices and is_stale: every difference explained by source choice"] = (
+        caps = rec["allowed_residuals"]
+        verdicts["prices and is_stale: every difference explained by its mechanism"] = (
             set(prices) <= {"equal"} | PRICE_EXPLAINED
-            and prices.get("absent_in_v1", 0) <= absent_cap
+            and prices.get("absent_in_v1", 0) <= caps["absent_in_v1"]
+            and prices.get("fallback_batch_not_in_log", 0) <= caps["fallback_batch_not_in_log"]
         )
         con = duckdb.connect()
         con.register("k", keys)
         explained_keys = con.execute(
             "select symbol, trade_date from k where category in "
-            "('source_choice', 'absent_in_v1', 'stale_from_neighbour')"
+            "('source_choice', 'absent_in_v1', 'stale_from_neighbour', "
+            "'fallback_batch_not_in_log')"
         ).to_arrow_table()
         price_explained = {r["symbol"] for r in explained_keys.to_pylist()}
 
@@ -360,9 +396,27 @@ def run(cfg: dict, env: dict) -> int:
             "select symbol, exchange, coalesce(exchange_is_inferred, false) "
             "as exchange_is_inferred from dim_security_v2"
         ).to_arrow_table()
-        exchange = compare_exchange(ex_v2, ex_v1, price_explained)
+        low = dbt_vars["inference_low_price_below_vnd"]
+        mid = dbt_vars["inference_mid_price_max_vnd"]
+        tick = dbt_vars["inference_hnx_tick_vnd"]
+        min_rows = dbt_vars["exchange_inference_min_rows"]
+        share = dbt_vars["exchange_inference_hnx_share"]
+        v1_rule_now = v1.execute(
+            f"with c as (select symbol, "
+            f"count(*) filter (where close_vnd < {low}) as n_low, "
+            f"count(*) filter (where close_vnd < {low} and close_vnd % {tick} = 0) as l100, "
+            f"count(*) filter (where close_vnd between {low} and {mid}) as n_mid, "
+            f"count(*) filter (where close_vnd between {low} and {mid} "
+            f"and close_vnd % {tick} = 0) as m100 from bronze_price group by symbol) "
+            f"select symbol, case "
+            f"when n_low >= {min_rows} then case when l100 > {share} * n_low "
+            f"then 'HNX' else 'HOSE' end "
+            f"when n_mid >= {min_rows} then case when m100 > {share} * n_mid "
+            f"then 'HNX' else 'HOSE' end end as exchange from c"
+        ).to_arrow_table()
+        exchange = compare_exchange(ex_v2, ex_v1, price_explained, v1_rule_now)
         print(f"     exchange: {exchange}")
-        verdicts["exchange equal except inferred from different prices"] = (
+        verdicts["exchange equal except inferred from other or newer prices"] = (
             "unexplained" not in exchange
         )
         con.register("ev2", ex_v2)
@@ -437,8 +491,13 @@ def self_test() -> int:
     def keys(*rows: tuple) -> pa.Table:
         return pa.table({"symbol": [r[0] for r in rows], "trade_date": [d(r[1]) for r in rows]})
 
+    batch = dt.datetime(2026, 8, 6, 4, 40, 36, tzinfo=dt.UTC)
+    earlier = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+
     def classes(v2_rows: pa.Table, v1_rows: pa.Table, raw_rows: pa.Table) -> dict[str, int]:
-        return count_by(classify_prices(v2_rows, v1_rows, raw_rows, p, f), "category")
+        if "ingested_at" not in v1_rows.column_names:
+            v1_rows = v1_rows.append_column("ingested_at", pa.array([earlier] * len(v1_rows)))
+        return count_by(classify_prices(v2_rows, v1_rows, raw_rows, p, f, [batch]), "category")
 
     v1 = prices(
         ("A", "2026-01-05", 10, p), ("B", "2026-01-05", 20, f), ("B", "2026-01-06", 21, p, 1)
@@ -462,6 +521,13 @@ def self_test() -> int:
     lost_row = classes(one_a, prices(("A", "2026-01-05", 10, p), ("A", "2026-01-06", 11, p)), raw)
     same_source_change = classes(prices(("A", "2026-01-05", 12, p)), one_a, raw)
     lonely_stale = classes(prices(("A", "2026-01-05", 10, p, 1)), one_a, raw)
+    v1_extra = prices(("A", "2026-01-05", 10, p), ("H", "2026-08-04", 9, f))
+
+    def stamped(when: dt.datetime) -> pa.Table:
+        return v1_extra.append_column("ingested_at", pa.array([earlier, when]))
+
+    unlogged_row = classes(one_a, stamped(batch), raw)
+    logged_row = classes(one_a, stamped(dt.datetime(2026, 8, 18, tzinfo=dt.UTC)), raw)
 
     def cal(rows: list) -> pa.Table:
         dates, trading, observed = zip(*rows, strict=True)
@@ -549,6 +615,10 @@ def self_test() -> int:
         == {"unexplained": 1},
         "planted: is_stale differs with no source change before it - unexplained": lonely_stale
         == {"unexplained": 1},
+        "a v1 row from the batch missing from the log is explained": unlogged_row
+        == {"equal": 1, "fallback_batch_not_in_log": 1},
+        "planted: the same row from a logged batch - unexplained": logged_row
+        == {"equal": 1, "unexplained": 1},
         "control calendar": cal_control
         == {"observed_equal": 1, "holiday_seed": 1, "rule_equal": 1},
         "planted calendar: observed range moved, days on one side only": cal_planted
@@ -558,9 +628,13 @@ def self_test() -> int:
         "planted universe difference outside the ADV window - unexplained": u_outside
         == {"equal": 1, "unexplained": 1},
         "exchange: an inferred difference is explained only with other prices": compare_exchange(
-            ex_v2, ex_v1, {"B"}
+            ex_v2, ex_v1, {"B"}, pa.table({"symbol": ["C"], "exchange": ["HOSE"]})
         )
         == {"equal": 1, "inferred_from_other_prices": 1, "unexplained": 1},
+        "exchange: v1's rule on v1's current prices agrees with v2 - explained": compare_exchange(
+            ex_v2, ex_v1, {"B"}, pa.table({"symbol": ["C"], "exchange": ["HNX"]})
+        )
+        == {"equal": 1, "inferred_from_other_prices": 1, "v1_table_built_from_older_prices": 1},
         "signatures: identical tables differ nowhere": differing_symbols(
             pa.table({"symbol": ["A"], "n": [1], "sum_day": [5]}),
             pa.table({"symbol": ["A"], "n": [1], "sum_day": [5]}),

@@ -19,6 +19,9 @@ All notable changes to this project are documented here. The format follows
   windows, inferred exchange); anything else fails. Reads marts as `sa-bi-reader`.
 - `tools/check_seeds_vs_knowledge.py`: tick sizes, normal bands and holidays in the seeds
   agree with `market-microstructure.md`; run in `ci / lint`.
+- Source choice prefers a clean row: the primary's, else the fallback's, else the primary's
+  broken one (found by reconciliation: GMX 2013-11-22, primary close below its low, was lost
+  while the fallback row was clean). The bad-row checks live in one macro.
 - dbt project (P2 part 1, #20): market-rule seeds with effective dates and sources
   (tick size, price band, holidays incl. 2026-11-24 and provisional 2027, exchange
   aliases, the HNX→HOSE move, known bad dates); staging latest-wins over the raw log;

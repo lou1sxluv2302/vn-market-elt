@@ -26,6 +26,9 @@ rather than point-in-time exchange, and liquidity tiers that were never measured
 5. **No listing-date filter** yet: dates exist for under half the symbols ("has traded"
    stands in). Recorded as open question 20 in `market-microstructure.md`.
 6. **dbt unit tests run in CI on dbt-duckdb** from P2 on.
+7. **Source choice prefers a clean row** over the primary source when the primary's row
+   fails v1's structural checks and the fallback's passes (refines plan decision 1, found
+   by the first reconciliation).
 
 ## Consequences
 
