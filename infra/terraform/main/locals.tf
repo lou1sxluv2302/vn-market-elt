@@ -17,6 +17,9 @@ locals {
     marts_daily    = "dbt marts for the cold path."
   }
 
+  # dbt's dev target (spec §14.8): same layers, prefixed, tables expire after 7 days.
+  dev_datasets = toset(["dev_staging", "dev_intermediate", "dev_marts_daily"])
+
   # Spec §14.2. Keys are the account ids (sa-<role>).
   service_accounts = {
     "sa-collector" = "Collector on the VM: writes raw stream batches."

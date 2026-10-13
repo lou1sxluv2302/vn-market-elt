@@ -1,0 +1,13 @@
+exchange,band_case,band_ratio,effective_from,effective_to,as_of,evidence,source_ref
+HOSE,normal,0.07,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §3
+HNX,normal,0.10,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §3
+UPCOM,normal,0.15,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §3
+HOSE,first_trading_day,0.20,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §3
+HNX,first_trading_day,0.30,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §3
+UPCOM,first_trading_day,0.40,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §3
+HOSE,resume_after_25d,0.20,,,2026-10-13,documented_medium,docs/knowledge/market-microstructure.md §3
+HNX,resume_after_25d,0.30,,,2026-10-13,documented_medium,docs/knowledge/market-microstructure.md §3
+UPCOM,resume_after_25d,0.40,,,2026-10-13,documented,docs/knowledge/market-microstructure.md §3
+HOSE,ex_stock_dividend,0.20,,,2026-10-13,documented_medium,docs/knowledge/market-microstructure.md §3
+HNX,ex_stock_dividend,0.30,,,2026-10-13,documented_medium,docs/knowledge/market-microstructure.md §3
+UPCOM,ex_stock_dividend,,,,2026-10-13,unverified,docs/knowledge/market-microstructure.md §3 (UPCoM value unverified: kept null)

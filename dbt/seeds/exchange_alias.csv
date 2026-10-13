@@ -1,0 +1,7 @@
+source_value,exchange,is_in_scope,effective_from,effective_to,as_of,source_ref
+HSX,HOSE,true,,,2026-10-13,docs/knowledge/market-microstructure.md §1 and §12
+HOSE,HOSE,true,,,2026-10-13,docs/knowledge/market-microstructure.md §12
+HNX,HNX,true,,,2026-10-13,docs/knowledge/market-microstructure.md §12
+UPCOM,UPCOM,false,,,2026-10-13,docs/knowledge/market-microstructure.md §12
+UPCoM,UPCOM,false,,,2026-10-13,docs/knowledge/market-microstructure.md §12
+DELISTED,,false,,,2026-10-13,docs/knowledge/market-microstructure.md §12 (exchange lost in the source)

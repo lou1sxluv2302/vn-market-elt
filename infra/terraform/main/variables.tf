@@ -42,6 +42,12 @@ variable "github_repository_id" {
   default     = "1410331255"
 }
 
+variable "dev_table_expiration_days" {
+  description = "Lifetime of tables in the dev_* datasets (spec §14.8)."
+  type        = number
+  default     = 7
+}
+
 variable "create_vm" {
   description = "Create the collector VM, its network and the IAP firewall rule. Off until the S0 feed probe passes (approved plan, option A)."
   type        = bool

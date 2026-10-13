@@ -9,11 +9,11 @@ repos:
         pass_filenames: false
         always_run: true
       - id: no-data-files
-        name: no market data outside tests/fixtures
-        entry: data files are not allowed outside tests/fixtures
+        name: no market data outside tests/fixtures (dbt seeds hold rules, not data)
+        entry: data files are not allowed outside tests/fixtures and dbt/seeds
         language: fail
         files: \.(parquet|pbix|duckdb|csv|jsonl)$
-        exclude: ^tests/fixtures/
+        exclude: ^(tests/fixtures/|dbt/seeds/[a-z_]+\.csv$)
       - id: no-typographic-dashes
         name: ASCII hyphen only (no em or en dash)
         language: pygrep

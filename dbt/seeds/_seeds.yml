@@ -1,0 +1,105 @@
+version: 2
+
+# Market rules split out of v1's single market_rules.yml (docs/knowledge/market-microstructure.md
+# §12). Every rule row has an effective period and an as_of; null effective_from means "before
+# the first known date". Unverified facts are null, never guessed.
+
+seeds:
+  - name: tick_size
+    description: >
+      Tick size by exchange, instrument class and price level. HNX ETF / covered-warrant
+      ticks are unverified in the knowledge file, so they have no row (not a guessed one).
+    config:
+      column_types:
+        price_from_vnd: bigint
+        tick_vnd: bigint
+        effective_from: date
+        effective_to: date
+        as_of: date
+    columns:
+      - name: tick_vnd
+        data_tests: [not_null]
+    data_tests:
+      - unique_combination:
+          columns: [exchange, instrument_class, price_from_vnd, effective_from]
+      - as_of_within_days:
+          days: 92
+
+  - name: price_band
+    description: Daily price band (fraction of the reference price) by exchange and case.
+    config:
+      column_types:
+        band_ratio: numeric
+        effective_from: date
+        effective_to: date
+        as_of: date
+    columns:
+      - name: band_case
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [normal, first_trading_day, resume_after_25d, ex_stock_dividend]
+    data_tests:
+      - unique_combination:
+          columns: [exchange, band_case, effective_from]
+      - as_of_within_days:
+          days: 92
+
+  - name: holidays
+    description: >
+      Exchange holidays on weekdays; status announced, provisional or confirmed. Each row is
+      a dated fact, so it has no effective period. From 1 December the next year's dates
+      must be present (tests/assert_next_year_holidays_seeded.sql).
+    config:
+      column_types:
+        holiday_date: date
+        as_of: date
+    columns:
+      - name: holiday_date
+        data_tests: [unique, not_null]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [announced, provisional, confirmed]
+    data_tests:
+      - as_of_within_days:
+          days: 92
+
+  - name: exchange_alias
+    description: Source spellings of an exchange; DELISTED maps to no exchange.
+    config:
+      column_types:
+        is_in_scope: boolean
+        effective_from: date
+        effective_to: date
+        as_of: date
+    columns:
+      - name: source_value
+        data_tests: [unique, not_null]
+    data_tests:
+      - as_of_within_days:
+          days: 92
+
+  - name: exchange_changes
+    description: Announced exchange moves applying to every listed stock (HNX to HOSE).
+    config:
+      column_types:
+        effective_from: date
+        effective_to: date
+        as_of: date
+    data_tests:
+      - unique_combination:
+          columns: [from_exchange, effective_from]
+      - as_of_within_days:
+          days: 92
+
+  - name: known_bad_dates
+    description: Dates whose price rows are dropped as a whole (a dated fact, so no effective period).
+    config:
+      column_types:
+        bad_date: date
+        as_of: date
+    columns:
+      - name: bad_date
+        data_tests: [unique, not_null]

@@ -40,7 +40,8 @@ they become the source of progress and this list is retired.
 
 **Cold path · research · streaming**
 - [x] P1 history load - `raw_vnstock` holds every pull of v1's daily OHLCV (145 files to 2026-10-13) and the symbol lists; `tools/reconcile_v1.py` green on all four checks (#18)
-- [ ] P2-P3 dbt models, data-quality tests
+- [ ] P2 dbt (#20) - part 1: project, keyless identity (`sa-dbt` by impersonation), market-rule seeds, staging and intermediate models, unit tests in CI on DuckDB; part 2: marts and reconciliation
+- [ ] P3 data-quality tests
 - [ ] Research track - tracked in the private repo
 - [ ] S0-S3 feed probe, collector, load, hot path
 - [ ] S4, P4, P5 → `v1.0.0`
@@ -263,7 +264,7 @@ After each batch: load job GCS → `raw_vps_stream.messages`, partitioned by `dt
 | Phase | Work | Done when |
 |---|---|---|
 | P1 | dlt loads history from the main repo's raw parquet into `raw_vnstock` (**read-only**): every pull of daily OHLCV kept as a log, plus the symbol reference lists; security master and calendar are rebuilt in P2 | `tools/reconcile_v1.py`: raw = parquet per file · latest-wins over raw reproduces DuckDB except explained residuals · reference lists = parquet |
-| P2 | dbt: `is_stale` · `dim_trading_calendar` (≥ 30 traded symbols) · point-in-time universe · tick size and price band from seed `market_rules`. `tools/reconcile_duckdb.py` opens DuckDB **read-only** | Matches DuckDB per Q4 |
+| P2 | dbt: `is_stale` · `dim_trading_calendar` (≥ 30 traded symbols) · point-in-time universe · market-rule seeds with effective dates (tick size, price band, holidays, exchange aliases and changes, known bad dates). `tools/reconcile_v1.py --scope marts` opens DuckDB **read-only** | Matches DuckDB per Q4 (redefined: exact where v2 means the same, every deliberate difference counted) |
 | P3 | Port the main repo's data-quality tests to dbt tests, with planted faults | Every test has failed at least once |
 
 From P2 on: portable SQL; warehouse-specific functions go **behind macros**.

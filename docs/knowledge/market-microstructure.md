@@ -288,8 +288,10 @@ v1 kept every rule in one `market_rules.yml` with a single file-level `as_of` (2
 | `sessions` | exchange × phase × effective_from | §2 table, ICT clock times; pre-KRX rows (with MP, ATO priority) get `effective_to = 2025-05-04` once sourced |
 | `holidays` | date (× exchange) | 2026 list (13 dates, 11-24 `announced`); 2027 list (12 dates, `provisional`); status ∈ `announced`, `provisional`, `confirmed` |
 | `exchange_alias` | source spelling | `HSX`→HOSE, `HOSE`, `HNX`, `UPCOM`/`UPCoM`→UPCOM, `DELISTED`→null; in-scope flag HOSE, HNX; UPCOM = reference |
+| `exchange_changes` | from exchange × effective_from | announced market-wide moves: HNX→HOSE on 2026-12-28 (§1.1). Per-symbol moves still come from the symbol-list snapshots |
+| `known_bad_dates` | date | dates whose price rows are dropped as a whole (2018-07-23, carried from v1, cause not recorded ❓) |
 
-Smaller constants (board lot 100, odd lot 1-99, max order HOSE 500,000, put-through minimums, settlement lag 2 sessions, sellable from 13:00, par value 10,000 VND) go in one `market_constants` seed with the same date columns. Per-symbol exchange history (§1.1) is a snapshot model, not a seed. Keep ❓ facts out of the seeds as nulls with a ❓ note, never as values.
+Smaller constants (board lot 100, odd lot 1-99, max order HOSE 500,000, put-through minimums, settlement lag 2 sessions, sellable from 13:00, par value 10,000 VND) go in one `market_constants` seed with the same date columns. Per-symbol exchange history is a snapshot model; a market-wide move announced in advance (§1.1) is a seed row, so it applies from its effective date rather than from the day a snapshot notices it. Keep ❓ facts out of the seeds as nulls with a ❓ note, never as values.
 
 Seed tests: a seed fails when `as_of` is older than one quarter, or when next year's holidays are missing after 1 December.
 

@@ -8,6 +8,8 @@ bi/
 *.jsonl
 *.csv
 !tests/fixtures/**/*.csv
+# dbt seeds hold public market rules (ticks, bands, holidays), never prices.
+!dbt/seeds/*.csv
 !tests/fixtures/**/*.jsonl
 
 # --- Secrets and environment-specific values ---
@@ -62,8 +64,12 @@ build/
 
 # --- dbt ---
 dbt/target/
+# The CI profile names an in-memory DuckDB only: no credentials, safe to commit.
+!dbt/ci/profiles.yml
 dbt/dbt_packages/
 dbt/logs/
+# dbt's anonymous user id (telemetry); usage stats are switched off in dbt_project.yml.
+.user.yml
 logs/
 
 # --- Editors / OS ---

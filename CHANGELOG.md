@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- dbt project (P2 part 1, #20): market-rule seeds with effective dates and sources
+  (tick size, price band, holidays incl. 2026-11-24 and provisional 2027, exchange
+  aliases, the HNX→HOSE move, known bad dates); staging latest-wins over the raw log;
+  primary-first source choice; `is_stale` and v1's bad-row flags. dbt runs as `sa-dbt`
+  by impersonation; dev datasets expire tables after 7 days. CI job `dbt-test` runs
+  seed tests and unit tests on DuckDB, no warehouse.
 - P1 history load (#18): `vnmarket.el.load_v1_history` (dlt, append-only, every pull
   kept with file lineage; v1's schema checked before loading, types frozen; reference
   lists as content-hashed snapshots; backups never read; rows counted after the load;

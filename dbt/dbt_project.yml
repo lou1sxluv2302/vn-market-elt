@@ -1,0 +1,38 @@
+name: vnmarket
+version: "0.1.0"
+config-version: 2
+profile: vnmarket
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: target
+clean-targets: ["target", "dbt_packages"]
+
+flags:
+  send_anonymous_usage_stats: false  # no telemetry from this project
+
+vars:
+  # Daily price sources, in order of preference (config/sources of v1: vnstock_quote is
+  # primary, vndirect_dchart its fallback). staging keeps both; intermediate chooses.
+  primary_price_source: vnstock_quote
+  fallback_price_source: vndirect_dchart
+
+models:
+  vnmarket:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: intermediate
+      +materialized: table
+    marts:
+      daily:
+        +schema: marts_daily
+        +materialized: table
+
+seeds:
+  vnmarket:
+    +schema: staging
+    +quote_columns: false

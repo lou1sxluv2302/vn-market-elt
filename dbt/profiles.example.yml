@@ -1,0 +1,27 @@
+# Copy to dbt/profiles.yml (git-ignored) and fill in the project id.
+# No key file: dbt uses your Google login (application-default credentials) and
+# impersonates sa-dbt, which may read raw_* and write the layer datasets only.
+# Run from the repository root:  dbt build --project-dir dbt --profiles-dir dbt --target dev
+vnmarket:
+  target: dev
+  outputs:
+    dev:   # writes dev_staging, dev_intermediate, dev_marts_daily (tables expire after 7 days)
+      type: bigquery
+      method: oauth
+      impersonate_service_account: sa-dbt@<project-id>.iam.gserviceaccount.com
+      project: <project-id>
+      dataset: dev
+      location: US
+      threads: 4
+      job_execution_timeout_seconds: 600
+      job_retries: 1
+    prod:  # writes staging, intermediate, marts_daily
+      type: bigquery
+      method: oauth
+      impersonate_service_account: sa-dbt@<project-id>.iam.gserviceaccount.com
+      project: <project-id>
+      dataset: prod
+      location: US
+      threads: 4
+      job_execution_timeout_seconds: 600
+      job_retries: 1

@@ -1,0 +1,10 @@
+# CI only: a throwaway DuckDB file, no warehouse and no credentials. Unit tests and
+# `dbt parse` run here; nothing reads real data.
+vnmarket:
+  target: ci
+  outputs:
+    ci:
+      type: duckdb
+      path: target/ci.duckdb   # inside target/, git-ignored; rebuilt every run
+      schema: main
+      threads: 1
