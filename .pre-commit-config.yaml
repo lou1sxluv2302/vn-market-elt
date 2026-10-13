@@ -30,6 +30,7 @@ repos:
         args: [--maxkb=1024]
       - id: detect-private-key
       - id: check-merge-conflict
+      - id: check-yaml
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.0
     hooks:

@@ -33,7 +33,7 @@ they become the source of progress and this list is retired.
 - [x] 0.5 Repo security - pre-commit installed and green on the whole repo (secret scan, gitleaks, private keys, large files, data files, dashes, ruff); Dependabot; GitHub secret scanning and push protection on (#6)
 - [x] 0.6 Rulesets `protect-main` and `protect-release-tags`, squash-only, auto-delete branches, labels, phase milestones, PR/issue templates, CODEOWNERS (#7); status checks join the ruleset in 0.8
 - [ ] 0.7 Terraform (agent writes, owner applies)
-- [ ] 0.8 Minimal CI
+- [x] 0.8 Minimal CI - workflows `ci` and `security`, required in `protect-main`; a red PR was blocked and a planted key caught (#9). Terraform checks arrive with 0.7
 
 **Spec**
 - [x] v6 approved 2026-10-08 - research track before streaming (D23, D24); research moved to a private repo 2026-10-13

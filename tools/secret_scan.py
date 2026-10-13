@@ -195,6 +195,9 @@ def self_test() -> int:
             "aws_access_key" in s for s in planted_secrets
         ),
         "finding is redacted": all(fake_key not in s for s in planted_secrets),
+        "an unknown argument is rejected with exit 2": subprocess.run(  # noqa: S603
+            [sys.executable, __file__, "--bogus"], capture_output=True, timeout=60
+        ).returncode == 2,
     }
     for name, ok in checks.items():
         print(f"{'✅' if ok else '🔴'} {name}")

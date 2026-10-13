@@ -1,0 +1,52 @@
+# Required checks `lint` and `self-test` (CONTRIBUTING.md, "main ruleset").
+# Actions are pinned to a commit SHA (spec §14.7); Dependabot bumps them.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Pins agree across pyproject, hooks and workflows
+        run: python tools/check_pins.py
+      - name: pre-commit hooks (security hooks run in the security workflow)
+        env:
+          SKIP: secret-scan,gitleaks,no-data-files
+        run: pre-commit run --all-files --show-diff-on-failure
+
+  self-test:
+    name: self-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Every --self-test in the repository
+        run: python tools/run_self_tests.py
