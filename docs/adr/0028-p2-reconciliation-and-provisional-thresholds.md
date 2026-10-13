@@ -35,5 +35,9 @@ rather than point-in-time exchange, and liquidity tiers that were never measured
 - The calendar starts on 2005-01-01 as v1's; weekdays stand in before the first observed
   session (open question 21).
 - Reconciliation reads the marts as `sa-bi-reader`; the owner holds Token Creator on it.
+- Decision 7 has a measured cost: 26 primary rows (11 symbols, 2019-2021) that v1 kept
+  as stale are dropped, since a clean fallback row the day before makes them non-stale
+  with the open outside [low, high]. The reconciler explains them only right after a
+  source-choice row.
 - Raising a tier or changing the ADV rule is a config change plus a new reconciliation,
   and a research finding before it is presented as one.

@@ -22,6 +22,9 @@ All notable changes to this project are documented here. The format follows
 - Source choice prefers a clean row: the primary's, else the fallback's, else the primary's
   broken one (found by reconciliation: GMX 2013-11-22, primary close below its low, was lost
   while the fallback row was clean). The bad-row checks live in one macro.
+  Cost, measured: 26 primary rows of 11 symbols (2019-2021) that v1 kept as stale are
+  dropped, because the clean fallback day before makes them non-stale with the open
+  outside [low, high]; the reconciler names this `dropped_after_neighbour_source_change`.
 - dbt project (P2 part 1, #20): market-rule seeds with effective dates and sources
   (tick size, price band, holidays incl. 2026-11-24 and provisional 2027, exchange
   aliases, the HNX→HOSE move, known bad dates); staging latest-wins over the raw log;
