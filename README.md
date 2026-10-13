@@ -92,7 +92,7 @@ Progress is tracked in [milestones](../../milestones).
 - [Specification](docs/spec.md) - goals, phases, latency budget, security design
 - [Architecture decisions](docs/adr/README.md)
 - [Engineering rules](docs/engineering-rules.md)
-- [Glossary of Vietnamese market terms](docs/glossary.md)
+- [Project language: Vietnamese market terms](CONTEXT.md)
 - [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md)
 
 ## Data notice

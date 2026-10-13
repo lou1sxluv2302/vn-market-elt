@@ -29,7 +29,7 @@ they become the source of progress and this list is retired.
 - [x] Research content split into a private companion repo; README rewritten for a portfolio audience (2026-10-13)
 - [x] Security audit before first push (2026-10-13): no secrets; 2 Medium + 4 Low fixed - procedure in `docs/runbooks/security-audit.md`
 - [x] Pushed 2026-10-13: public `main`; private companion repo created (visibility verified private) and pushed; Dependabot security updates on
-- [ ] Agent workflow skills (`start-step`, `ship-pr`, `security-audit`, `release`, `harvest-knowledge`) - PR for issue #2
+- [ ] Agent workflow skills, mattpocock/skills integration (`docs/agents/`, `CONTEXT.md`), git guardrail hook - PR for issue #2
 - [ ] 0.5 Repo security - config done (`.pre-commit-config.yaml`, `tools/secret_scan.py`, Dependabot, `.gitattributes`); left: `pre-commit install` (GitHub secret scanning and push protection verified on)
 - [ ] 0.6 GitHub ruleset, labels, milestones, templates
 - [ ] 0.7 Terraform (agent writes, owner applies)
@@ -102,7 +102,7 @@ onward that no vendor can rewrite**.
 | D12 | **No JSON key files anywhere**, CI included | VM uses its attached service account; local uses ADC; GitHub Actions uses WIF; Power BI uses a Google login |
 | D13 | Secondary warehouses only **after P3**, same parquet, same dbt project | Earlier would mean fixing each bug in four places |
 | D14 | **Everything in this repository is in English**: identifiers, comments, commits, branches, tags, docs | Demo-ability. The main repo keeps its Vietnamese rule; one rule per repo |
-| D15 | Vietnamese market terms are translated through **one glossary**, `docs/glossary.md` | Two translations of one concept cannot be reconciled |
+| D15 | Vietnamese market terms are translated through **one glossary**, `CONTEXT.md` at the repo root | Two translations of one concept cannot be reconciled |
 | D16 | **GitHub Flow + Conventional Commits + SemVer** (`CONTRIBUTING.md`) | One long-lived branch is enough for a solo project; history still reads like a team's |
 | D17 | **The VM only runs tagged releases**, never `main` HEAD | The tag is what runs; rollback = deploy the previous tag |
 | D18 | Repository **`vn-market-elt`**, Python package `vnmarket` | Descriptive kebab-case English name |
@@ -184,7 +184,7 @@ Every migrated fact keeps its evidence level (✅ measured · ⚠️ from docume
 
 | Step | Who | Work |
 |---|---|---|
-| 0.1 | 🤖 | Repository skeleton; `git init -b main`; this English spec; one ADR per decision; `docs/glossary.md` |
+| 0.1 | 🤖 | Repository skeleton; `git init -b main`; this English spec; one ADR per decision; the glossary (now `CONTEXT.md`) |
 | 0.2 | 🤖 | Main repo: commit KB update and the Vietnamese spec (done, `b2ddd44`); replace that spec with a pointer here |
 | 0.3 | 👤 | GCP: project · billing · **budget $5 with alerts at 20% and 100%** · 2-step verification · install `gcloud`; run `gcloud auth login` and `gcloud auth application-default login` |
 | 0.4 | 👤 | GitHub: 2FA · install `gh`, run `gh auth login` · create the empty public repo `vn-market-elt` (done) |
@@ -199,7 +199,7 @@ vn-market-elt/
 ├── .github/        workflows/ (ci, infra, security, release) · ISSUE_TEMPLATE/ · pull_request_template.md · CODEOWNERS · dependabot.yml
 ├── CLAUDE.md       agent router (topic → file); directory rules in nested CLAUDE.md
 ├── README.md · SECURITY.md · CONTRIBUTING.md · CHANGELOG.md · LICENSE
-├── docs/           spec.md · engineering-rules.md · domain.md · glossary.md · knowledge/ · adr/ · runbooks/ · reports/
+├── docs/           spec.md · engineering-rules.md · domain.md · knowledge/ · adr/ · runbooks/ · reports/
 ├── config/         *.yml (no constants in Python) · env/<env>.example.yml
 ├── src/vnmarket/   collector/ · el/ · common/
 ├── dbt/            models/{staging,intermediate,marts/intraday,marts/daily} · seeds · macros · tests
@@ -413,7 +413,7 @@ the glossary.
 | Service account | `sa-<role>` | `sa-collector`, `sa-dbt`, `sa-bi-reader`, `sa-ci` |
 | Resource labels | `project`, `env`, `component`, `managed_by` | `managed_by=terraform` |
 
-Glossary of Vietnamese market terms: [`glossary.md`](glossary.md).
+Glossary of Vietnamese market terms: [`../CONTEXT.md`](../CONTEXT.md).
 
 ## 14. Security
 

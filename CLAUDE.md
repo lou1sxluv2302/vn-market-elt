@@ -14,7 +14,7 @@ repository** is **English** (ADR-0014).
 | **Engineering** - self-tests, timeouts, config, CLI, logging, data invariants | `docs/engineering-rules.md` |
 | **Research** - stock selection | Not in this repository: a **private** companion repo (location in `CLAUDE.local.md`) |
 | **Domain** - sessions, price bands, ex-rights, sources, the VPS feed, vnstock licences | `docs/domain.md` |
-| **Naming** - a Vietnamese market term in code | `docs/glossary.md`; columns, models, resources in `docs/spec.md` §13 |
+| **Naming** - a market term in prose, issues, tests or code | `CONTEXT.md`; column suffixes, models, resources in `docs/spec.md` §13 |
 | **Security** - identities, secrets, network, threat model, audits | `docs/spec.md` §14; audit procedure `docs/runbooks/security-audit.md`; reporting policy `SECURITY.md` |
 | **Git** - branches, commits, PRs, tags, releases | `CONTRIBUTING.md` |
 | **Infrastructure** - Terraform, VM, deploy | `infra/CLAUDE.md` (loads when working in `infra/`) |
@@ -23,6 +23,13 @@ repository** is **English** (ADR-0014).
 
 Directory-specific rules live in a `CLAUDE.md` inside that directory and load
 only when you work there.
+
+## Agent skills
+
+Engineering skills from mattpocock/skills (installed at user level) read three files:
+issue tracker = GitHub Issues (`docs/agents/issue-tracker.md`) · triage labels = the five
+defaults (`docs/agents/triage-labels.md`) · domain docs = single context, `CONTEXT.md` +
+`docs/adr/` (`docs/agents/domain.md`). This repo's workflow skills call them at fixed steps.
 
 ## Always on
 

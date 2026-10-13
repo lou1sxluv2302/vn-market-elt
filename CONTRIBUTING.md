@@ -4,6 +4,17 @@ This is a solo learning project, but it is run like a team project: every change
 goes through a pull request, every release is tagged, and the history is meant
 to be read. This file is the **single source** for the Git workflow.
 
+## Agent tooling
+
+- Workflow skills for this repo live in `.claude/skills/` (`start-step`, `ship-pr`,
+  `security-audit`, `release`, `harvest-knowledge`).
+- They call the engineering skills of [mattpocock/skills](https://github.com/mattpocock/skills)
+  (`grill-with-docs`, `to-spec`, `to-tickets`, `wayfinder`, `tdd`, `implement`,
+  `code-review`, `diagnosing-bugs`, `domain-modeling`, `triage`). Install those at
+  user level; they are not vendored here. Their per-repo configuration is `docs/agents/`.
+- A guardrail hook (`.claude/settings.json`) blocks `git push`, `reset --hard`,
+  `clean -f`, `branch -D` and `checkout .` / `restore .` for agents: the owner runs them.
+
 ## Branches - GitHub Flow
 
 ```

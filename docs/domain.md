@@ -10,7 +10,7 @@ Knowledge lives in [`knowledge/`](knowledge/README.md) - v2's own source of trut
 | Look-ahead, coverage, units, thresholds, tests that lie, storage and freshness lessons | [`knowledge/data-quality-lessons.md`](knowledge/data-quality-lessons.md) |
 | Indicators, flows, BI conventions | Not migrated yet (K0.3). Read v1's knowledge base, read-only, (path in `CLAUDE.local.md`), after checking its label in the private v1 inventory |
 
-Naming of every term in code: [`glossary.md`](glossary.md).
+Naming of every term: [`../CONTEXT.md`](../CONTEXT.md).
 
 ## Rules that bind this repository
 

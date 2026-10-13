@@ -264,4 +264,4 @@ URLs:
 - FiinGroup: [Datafeed](https://datafeed.fiingroup.vn/) · [prop API](https://datafeed.fiingroup.vn/api-giao-dich/tu-doanh)
 - Others: [WiFeed](https://www.wigroup.vn/wifeed) · [CafeF download](https://cafef.vn/du-lieu/du-lieu-download.chn) · [VnEconomy: HOSE stops prop disclosure](https://vneconomy.vn/lanh-dao-hose-len-tieng-ve-viec-dung-cung-cap-thong-tin-giao-dich-tu-doanh.htm) · [AlgoTrade Hub](https://hub.algotrade.vn/knowledge-hub/api-tren-thi-truong-chung-khoan-viet-nam/)
 
-New terms used here are defined in [`../glossary.md`](../glossary.md).
+New terms used here are defined in [`../../CONTEXT.md`](../../CONTEXT.md).

@@ -32,7 +32,7 @@ The inventory and v1's paths are local; see `CLAUDE.local.md`.
 
    Done when `python tools/secret_scan.py` exits 0 with no warnings, and a read-through finds none of the above.
 
-5. **Glossary first.** Every new code term is added to `docs/glossary.md` before it is used.
+5. **Language first.** Every new term is added to `CONTEXT.md` (Matt Pocock's format: definition, code name, Vietnamese term, words to avoid) before it is used; `domain-modeling` is the skill for it.
    Done when no new term is missing.
 
 6. **Route.** Update the status in `docs/knowledge/README.md`, the routing in `docs/domain.md` and spec §0.

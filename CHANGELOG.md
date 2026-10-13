@@ -9,6 +9,10 @@ All notable changes to this project are documented here. The format follows
 ### Added (after the bootstrap commit)
 - Agent workflow skills in `.claude/skills/`: `start-step`, `ship-pr`,
   `security-audit`, `release` (owner-invoked) and `harvest-knowledge` (#2).
+- Engineering skills from mattpocock/skills wired in: `docs/agents/` configuration
+  (GitHub Issues, default triage labels, single-context domain docs).
+- `CONTEXT.md` replaces `docs/glossary.md` as the project's language (ADR-0015 amended).
+- Git guardrail hook for agents (`.claude/settings.json`), adapted to run without `jq`.
 
 ### Added
 - Repository skeleton, English specification, 20 architecture decision records,

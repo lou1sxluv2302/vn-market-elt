@@ -24,7 +24,7 @@ Sequence only. Rules: `CONTRIBUTING.md` (commits, PRs), `docs/engineering-rules.
    Done when the table is complete.
 
 3. **Reconcile the docs.**
-   - New terms are in `docs/glossary.md`.
+   - New terms are in `CONTEXT.md`.
    - Constants live in `config/*.yml`.
    - The step's checkbox in spec §0 is updated.
    - `CHANGELOG.md` has an `[Unreleased]` line.
@@ -35,10 +35,13 @@ Sequence only. Rules: `CONTRIBUTING.md` (commits, PRs), `docs/engineering-rules.
 
    Done when each item is ✅ or ⚪ with a reason.
 
-4. **Commit.** Conventional Commit title, a body that says why, `Refs: #<issue>`, and the co-author line. Confirm `git config user.email` is the noreply address.
+4. **Review.** Run `/code-review` against `main`: the Standards axis uses `CONTRIBUTING.md` and `docs/engineering-rules.md`; the Spec axis uses the issue.
+   Done when every finding is fixed or answered in the PR description.
+
+5. **Commit.** Conventional Commit title, a body that says why, `Refs: #<issue>`, and the co-author line. Confirm `git config user.email` is the noreply address.
    Done when `git log -1` shows it.
 
-5. **Ask.** Give the owner the summary and the check table. Wait for an explicit go-ahead.
+6. **Ask.** Give the owner the summary, the check table and the exact push command. Wait for an explicit go-ahead.
 
-6. **Push and open the PR** with the template filled; "How verified" is the check table. Merging is the owner's decision (squash only).
+7. **Push and open the PR.** The owner runs the push: `git push` is blocked for agents by the guardrail hook (`.claude/hooks/block-dangerous-git.sh`). Then open the PR with `gh pr create`, template filled; "How verified" is the check table. Merging is the owner's decision (squash only).
    Done when the PR URL is reported.

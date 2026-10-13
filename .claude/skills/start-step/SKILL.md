@@ -13,7 +13,12 @@ Sequence only. The rules live in the files named in each step.
 2. **Check prerequisites.** Earlier steps it depends on are checked; every 👤 step it needs is named.
    Done when nothing is missing, or the owner has been asked for exactly what is missing.
 
-3. **Size it.** Large work - a new phase or component, a changed decision, anything that edits the spec - gets a written plan in the conversation and waits for the owner's approval. A small, fully specified step goes straight on.
+3. **Size it.** Large work - a new phase or component, a changed decision, anything that edits the spec - gets a plan approved by the owner first:
+   - sharpen it with `/grill-with-docs` (it records new terms in `CONTEXT.md` and decisions as ADRs);
+   - publish it with `/to-spec`, then split it with `/to-tickets`;
+   - work spanning several sessions gets a `/wayfinder` map.
+
+   A small, fully specified step goes straight on.
    Done when the plan is approved, or you have stated why the step is small.
 
 4. **Issue.** Find or open the GitHub issue for the step; its milestone is the phase.
@@ -25,4 +30,4 @@ Sequence only. The rules live in the files named in each step.
 6. **Read before writing.** Open every file the `CLAUDE.md` routing table names for the step's topics.
    Done when each routed file has been read.
 
-When the work is finished, continue with `ship-pr`.
+While working: `/tdd` for code (red, green, refactor; matches the self-test rule), `/implement` for ticket-driven work, `/codebase-design` for module boundaries, `/diagnosing-bugs` when something fails. When the work is finished, continue with `ship-pr`.

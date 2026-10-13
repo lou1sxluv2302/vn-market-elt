@@ -4,7 +4,7 @@ This file lists the data-quality and measurement lessons that v1 (the private re
 Every lesson names the v1 incident, the v2 mechanism that prevents it, and the v1 source lines it comes from. Process rules (self-tests, three states, exit codes, timeouts, strict CLIs) are in [`engineering-rules.md`](../engineering-rules.md) and are not repeated here.
 v1 deleted and rebuilt its warehouse twice (2026-08-07, 2026-08-21). Read its numbers as orders of magnitude, always together with the population they were measured on.
 
-**Evidence tags:** ✅ measured or verified · ⚠️ from documentation · ❓ unverified · `measured on v1, <date>` = measured on v1's own DuckDB warehouse. Code names follow [`glossary.md`](../glossary.md).
+**Evidence tags:** ✅ measured or verified · ⚠️ from documentation · ❓ unverified · `measured on v1, <date>` = measured on v1's own DuckDB warehouse. Code names follow [`CONTEXT.md`](../../CONTEXT.md).
 
 ## Contents
 
@@ -265,4 +265,4 @@ v1 deleted and rebuilt its warehouse twice (2026-08-07, 2026-08-21). Read its nu
 
 ---
 
-New terms used here are defined in [`../glossary.md`](../glossary.md).
+New terms used here are defined in [`../../CONTEXT.md`](../../CONTEXT.md).
