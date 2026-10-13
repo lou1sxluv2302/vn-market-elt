@@ -41,14 +41,23 @@ before raising the number.
 
 ## If a load fails
 
-dlt keeps the list of loaded files in its state, which is written with the data.
-If a run fails part-way, run `--apply` again: a pending load package is finished
-first, then new files load. If `reconcile_v1.py` then reports a file missing or
-doubled, reset and reload from scratch:
+dlt records the files it extracted in a local working folder
+(`~/.dlt/pipelines/v1_history`) before they reach BigQuery. If a run fails at
+the load step, that record can claim files the destination never received. The
+loader therefore counts **every** expected file in BigQuery after each run, and
+fails if any is missing or short.
 
-```bash
-dlt pipeline v1_history drop --drop-all
-```
+1. Look at the destination: list the tables in `raw_vnstock` (console, or
+   `bq ls raw_vnstock`).
+2. **Destination empty** (the failure came before any table was written):
+   delete the local working folder `~/.dlt/pipelines/v1_history`, fix the cause,
+   run `--apply` again. Nothing else holds state.
+3. **Destination holds data:** reset both sides, then reload from scratch -
+   `dlt pipeline v1_history drop --drop-all`, delete the `raw_vnstock` tables in
+   the console, run `--apply`. Raw is a log, so a clean reload is the only safe
+   repair.
 
-then drop the `raw_vnstock` tables in the BigQuery console and run `--apply`
-again. Raw is a log, so a clean reload is the only safe repair.
+Seen on the first run (2026-10-13): BigQuery refused a nested column of
+`company_overview` (its JSON type cannot be loaded from parquet). Nothing had
+been written; the local folder claimed all 145 files. Fixed in the loader
+(nested and all-null reference columns load as text) and case 2 applied.

@@ -140,6 +140,24 @@ def tree_fingerprint(paths: list[Path]) -> dict[str, tuple[int, int]]:
     return found
 
 
+def loadable(table: pa.Table) -> pa.Table:
+    """Make a reference table loadable from parquet into BigQuery without losing columns:
+    nested values (struct, list, map) become JSON text - BigQuery cannot load its JSON type
+    from parquet - and all-null columns become text, so they are not dropped."""
+    import json
+
+    for index, field in enumerate(table.schema):
+        if pa.types.is_nested(field.type):
+            values = [
+                None if v is None else json.dumps(v, default=str, ensure_ascii=False)
+                for v in table.column(index).to_pylist()
+            ]
+            table = table.set_column(index, field.name, pa.array(values, pa.string()))
+        elif pa.types.is_null(field.type):
+            table = table.set_column(index, field.name, table.column(index).cast(pa.string()))
+    return table
+
+
 def with_columns(table: pa.Table, **columns: tuple[Any, pa.DataType]) -> pa.Table:
     for name, (value, kind) in columns.items():
         table = table.append_column(name, pa.array([value] * table.num_rows, kind))
@@ -182,7 +200,7 @@ def build_source(
             if state.get("sha256") == digest:
                 return
             yield with_columns(
-                pq.read_table(path),
+                loadable(pq.read_table(path)),
                 _file_sha256=(digest, pa.string()),
                 _loaded_at=(loaded_at, pa.timestamp("us", tz="UTC")),
             )
@@ -210,14 +228,13 @@ def build_source(
 
 
 def load(pipeline: Any, bronze_dir: Path, cfg: dict, until: dt.date | None, bigquery: bool) -> int:
-    """Run the pipeline, then count every file loaded in this run in the destination."""
+    """Run the pipeline, then count every expected file in the destination - not only new
+    ones: dlt's local state can claim a file is loaded when the destination never got it."""
     from dlt.pipeline.exceptions import PipelineStepFailed
 
     files = ohlcv_files(bronze_dir, cfg, until)
     expected = {item.relative: check_schema(item) for item in files}  # refuse before loading
     before = tree_fingerprint([bronze_dir])
-    resources = pipeline.state.get("sources", {}).get(cfg["pipeline_name"], {}).get("resources", {})
-    already = set(resources.get(cfg["ohlcv"]["table"], {}).get("loaded_files", []))
     skipped_empty: list[str] = []
     try:
         pipeline.run(build_source(bronze_dir, cfg, files, bigquery, skipped_empty))
@@ -225,21 +242,25 @@ def load(pipeline: Any, bronze_dir: Path, cfg: dict, until: dt.date | None, bigq
         print(f"🔴 load failed at step {exc.step}: {exc.exception}")
         print("   See docs/runbooks/p1-history-load.md, 'If a load fails'.")
         return 1
-    new = [f for f in expected if f not in already and f not in skipped_empty]
+    wanted = [f for f, n in expected.items() if n > 0]
     counts: dict[str, int] = {}
-    if new:
+    if wanted:
         with pipeline.sql_client() as client:
             qualified = client.make_qualified_table_name(cfg["ohlcv"]["table"])
             rows = client.execute_sql(
                 f"select _file_name, count(*) from {qualified} group by _file_name"
             )
             counts = {name: n for name, n in rows}
-    wrong = [f for f in new if counts.get(f) != expected[f]]
+    wrong = [f for f in wanted if counts.get(f) != expected[f]]
     for name in wrong[:20]:
         print(f"     {name}: parquet {expected[name]} rows, destination {counts.get(name)}")
     changed = tree_fingerprint([bronze_dir]) != before
-    print(f"Loaded {len(new)} new files; empty files skipped: {len(skipped_empty)}")
-    print(f"{'🔴' if wrong else '✅'} rows of every newly loaded file counted in the destination")
+    print(f"Files expected: {len(wanted)}; empty files skipped: {len(skipped_empty)}")
+    print(
+        f"{'🔴' if wrong else '✅'} every expected file has its exact row count in the destination"
+    )
+    if wrong:
+        print("   dlt's state may list files the destination lacks: runbook, 'If a load fails'.")
     print(f"{'🔴' if changed else '✅'} v1's files unchanged during the run")
     return 1 if wrong or changed else 0
 
@@ -397,6 +418,41 @@ def self_test() -> int:
             refused = True
         checks["planted type drift is refused before loading"] = (
             refused and not (tmp / "dest.duckdb").exists()
+        )
+
+    with tempfile.TemporaryDirectory() as name:
+        tmp = Path(name)
+        bronze, paths, pipeline = setup(tmp)
+        # Planted: a reference list with a nested and an all-null column (v1's company list).
+        fx.write(
+            paths["reference_dir"] / "company_overview.parquet",
+            fx.pa.table(
+                {
+                    "symbol": ["AAA", "BBB"],
+                    "insight": [{"a": 1, "b": "x"}, None],
+                    "tag": fx.pa.array([None, None], fx.pa.null()),
+                }
+            ),
+        )
+        nested_code = load(pipeline, bronze, cfg, None, bigquery=False)
+        ref_types = dict(
+            query(
+                tmp,
+                "select column_name, data_type from information_schema.columns "
+                "where table_name = 'ref_company_overview'",
+            )
+        )
+        checks["nested and all-null reference columns load as text, none dropped"] = (
+            nested_code == 0
+            and ref_types.get("insight") == "VARCHAR"
+            and ref_types.get("tag") == "VARCHAR"
+        )
+        # Planted: dlt's state says a file is loaded, but the destination lost its rows.
+        with duckdb.connect(str(tmp / "dest.duckdb")) as con:
+            con.execute(f"delete from {table} where _file_name like '%/b.parquet'")
+        lost_code = load(pipeline, bronze, cfg, None, bigquery=False)
+        checks["planted file in state but missing from the destination fails the run"] = (
+            lost_code == 1
         )
 
     checks["an unknown argument is rejected with exit 2"] = (
