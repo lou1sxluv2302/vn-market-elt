@@ -12,4 +12,5 @@ v1:
   bronze_dir: "<path-to-v1>/02_system/data/bronze"
   duckdb_path: "<path-to-v1>/02_system/data/vts.duckdb"
 el:
+  marts_reader_service_account: "sa-bi-reader@<project-id>.iam.gserviceaccount.com"
   loader_service_account: "sa-loader@<project-id>.iam.gserviceaccount.com"

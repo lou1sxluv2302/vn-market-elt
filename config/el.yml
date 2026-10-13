@@ -47,6 +47,7 @@ reconcile_v1:
   # Position weight for the per-symbol checksum: a value moved between two dates,
   # or +x on one date and -x on another, changes the weighted sum.
   checksum_modulus: 1009
+  marts_dataset: marts_daily   # read by tools/reconcile_v1_marts.py as sa-bi-reader
 
 # Column-name prefixes BigQuery refuses, case-insensitive (its error message and
 # "Column names" in the BigQuery docs). Checked before loading, because a local

@@ -31,6 +31,13 @@ resource "google_service_account_iam_member" "owner_impersonates_dbt" {
   member             = "user:${var.owner_email}"
 }
 
+# Reconciliation reads the marts as sa-bi-reader (marts_* only), the same way.
+resource "google_service_account_iam_member" "owner_impersonates_bi_reader" {
+  service_account_id = google_service_account.this["sa-bi-reader"].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "user:${var.owner_email}"
+}
+
 resource "google_project_iam_custom_role" "ci_plan_compute" {
   role_id     = "ciPlanComputeReader"
   title       = "CI plan: compute metadata reader"
