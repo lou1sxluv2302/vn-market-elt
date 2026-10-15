@@ -307,6 +307,22 @@ The validity window of a seed row or a dimension version; `effective_to` is excl
 The suffix stating how a metric aggregates over a period; one rule per metric.
 _Avoid_: reusing the daily column name for a period value
 
+**Data test** (dbt `data_tests`, `tests/*.sql`) · _phép kiểm dữ liệu_:
+A query over built tables that returns the rows breaking one condition; red when it returns any. Distinct from a unit test, which checks one model's logic on rows it is given.
+_Avoid_: check (unqualified), assertion (for the whole test)
+
+**Planted fault** (`tools/planted_faults.py`) · _lỗi cấy_:
+A deliberate defect carrying a real failure mechanism, planted in a synthetic warehouse to prove that a data test can go red; the tests it turns red are named in advance.
+_Avoid_: mock, fake data
+
+**Echo** (a planted fault's expected set) · _lỗi dội_:
+A test further down the lineage that turns red because the planted defect flows into it, named alongside the target.
+_Avoid_: side effect, false positive
+
+**Monitor** (dbt test with `severity: warn`) · _phép theo dõi_:
+A data test that warns, not blocks, when a count passes a ceiling measured on prod.
+_Avoid_: alert (a notification), gate
+
 ### Reporting
 
 **As-of** (`as_of`) · _mốc dữ liệu_:

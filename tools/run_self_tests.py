@@ -14,16 +14,18 @@ Usage:
     python tools/run_self_tests.py [--root PATH]
     python tools/run_self_tests.py --self-test
 """
+
 from __future__ import annotations
 
 import argparse
 import ast
 import os
-import signal
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+from vnmarket.common.process import kill_tree
 
 FLAG = "--self-test"
 GIT_TIMEOUT_SECONDS = 60
@@ -46,7 +48,9 @@ def declares_self_test(source: str) -> bool:
 def tracked_python_files(root: Path) -> list[Path]:
     listing = subprocess.run(  # noqa: S603 - fixed argv, no shell
         ["git", "-C", str(root), "ls-files", "-z", "--", "*.py"],  # noqa: S607 - git from PATH
-        capture_output=True, check=True, timeout=GIT_TIMEOUT_SECONDS,
+        capture_output=True,
+        check=True,
+        timeout=GIT_TIMEOUT_SECONDS,
     ).stdout.decode("utf-8")
     return sorted(root / name for name in listing.split("\0") if name)
 
@@ -61,18 +65,6 @@ def discover(root: Path) -> tuple[list[Path], list[Path]]:
         except (SyntaxError, UnicodeDecodeError):
             unparsable.append(path)
     return found, unparsable
-
-
-def kill_tree(process: subprocess.Popen) -> None:
-    """Stop the script and everything it started (it may have spawned git, for example)."""
-    if os.name == "nt":
-        subprocess.run(  # noqa: S603 - fixed argv, no shell
-            ["taskkill", "/T", "/F", "/PID", str(process.pid)],  # noqa: S607 - Windows built-in
-            capture_output=True, timeout=GIT_TIMEOUT_SECONDS,
-        )
-    else:
-        os.killpg(process.pid, signal.SIGKILL)
-    process.wait()
 
 
 def run(script: Path, root: Path, timeout: float) -> int | None:
@@ -107,8 +99,8 @@ def run_all(root: Path, timeout: float = SCRIPT_TIMEOUT_SECONDS) -> int:
         results.append((script, run(script, root, timeout)))
     print()
     for script, code in results:
-        symbol, status = ("🔴", "timed out") if code is None else (
-            "✅" if code == 0 else "🔴", f"exit {code}"
+        symbol, status = (
+            ("🔴", "timed out") if code is None else ("✅" if code == 0 else "🔴", f"exit {code}")
         )
         print(f"{symbol} {script.relative_to(root)} ({status})")
     failed = sum(code != 0 for _, code in results)
@@ -129,17 +121,19 @@ def self_test() -> int:
     hanging = passing.replace("sys.exit(0)", "import time\ntime.sleep(60)\n")
     # Mentions the flag only in a docstring and a comment, and fails if run.
     decoy = (
-        '"""Usage: tool.py --self-test"""\n'
-        '# add_argument("--self-test")\n'
-        "import sys\n"
-        "sys.exit(1)\n"
+        '"""Usage: tool.py --self-test"""\n# add_argument("--self-test")\nimport sys\nsys.exit(1)\n'
     )
 
     def make_repo(root: Path, files: dict[str, str]) -> Path:
         root.mkdir()
         subprocess.run(["git", "init", "-q", str(root)], check=True, timeout=60)  # noqa: S603,S607
-        files = {".gitignore": ".venv/\n", "pass.py": passing, "decoy.py": decoy,
-                 ".venv/vendored.py": failing, **files}
+        files = {
+            ".gitignore": ".venv/\n",
+            "pass.py": passing,
+            "decoy.py": decoy,
+            ".venv/vendored.py": failing,
+            **files,
+        }
         for name, text in files.items():
             (root / name).parent.mkdir(parents=True, exist_ok=True)
             (root / name).write_text(text, encoding="utf-8")
@@ -168,7 +162,8 @@ def self_test() -> int:
             "finding no self-test exits 1": run_all(empty) == 1,
             "an unknown argument is rejected with exit 2": subprocess.run(  # noqa: S603
                 [sys.executable, __file__, "--bogus"], capture_output=True, timeout=60
-            ).returncode == 2,
+            ).returncode
+            == 2,
         }
     print()
     for name, ok in checks.items():
@@ -180,9 +175,7 @@ def main() -> int:
     for stream in (sys.stdout, sys.stderr):  # Windows pipes default to cp1252
         stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument(
-        "--root", type=Path, default=Path("."), help="repository root (default: .)"
-    )
+    parser.add_argument("--root", type=Path, default=Path("."), help="repository root (default: .)")
     parser.add_argument("--self-test", action="store_true", help="run offline known-answer tests")
     args = parser.parse_args()  # rejects unknown arguments with exit code 2
     return self_test() if args.self_test else run_all(args.root.resolve())

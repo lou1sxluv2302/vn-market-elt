@@ -3,6 +3,8 @@ version: 2
 models:
   - name: dim_trading_calendar
     description: One row per calendar day; sessions observed in history, weekdays minus holidays after.
+    data_tests:
+      - not_empty
     columns:
       - name: calendar_date
         data_tests: [unique, not_null]
@@ -17,25 +19,58 @@ models:
       - name: symbol
         data_tests: [not_null]
     data_tests:
+      - not_empty
       - unique_combination:
           arguments:
             columns: [symbol, effective_from]
 
   - name: fct_price_daily
     description: Clean daily prices with exchange, tick and band of the trade date.
+    # session_seq is not null exactly when the date is a trading day:
+    # tests/assert_price_dates_are_trading_days.sql checks that, once.
     data_tests:
       - unique_combination:
           arguments:
             columns: [symbol, trade_date]
+      - not_empty
+      # v1 dq 2-4 and 7, one condition each (data-quality-lessons §28).
+      - row_condition:
+          name: price_close_positive
+          arguments:
+            condition: close_vnd > 0
+      - row_condition:
+          name: price_close_within_low_high
+          arguments:
+            condition: close_vnd between low_vnd and high_vnd
+      - row_condition:
+          name: price_open_within_low_high
+          arguments:
+            condition: open_vnd between low_vnd and high_vnd
+      - row_condition:
+          name: price_volume_not_negative
+          arguments:
+            condition: match_qty >= 0
+      - row_condition:
+          # A price in thousands of VND, or scaled wrong, is rarely a multiple of 10. Primary
+          # rows only: the fallback (VNDirect DCHART) has 1-VND resolution by design
+          # (data-sources.md §5; 330 fallback rows on prod 2026-10-13, 0 primary rows).
+          # v1 checked every universe row; it had no fallback rows there. A fallback row in
+          # thousands of VND is therefore not caught here (a declared gap).
+          name: price_close_multiple_of_10_vnd
+          arguments:
+            condition: mod(close_vnd, 10) = 0
+          config:
+            where: "_source_id = '{{ var(\"primary_price_source\") }}'"
     columns:
       - name: symbol
         data_tests: [not_null]
-      - name: session_seq
+      - name: close_vnd
         data_tests: [not_null]
 
   - name: fct_liquidity_daily
     description: ADV20 over the previous non-stale rows and the liquidity tier.
     data_tests:
+      - not_empty
       - unique_combination:
           arguments:
             columns: [symbol, trade_date]
@@ -51,6 +86,7 @@ models:
   - name: fct_universe_daily
     description: Point-in-time universe flag and the first reason a row is out.
     data_tests:
+      - not_empty
       - unique_combination:
           arguments:
             columns: [symbol, trade_date]
