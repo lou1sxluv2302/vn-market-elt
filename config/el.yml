@@ -21,6 +21,25 @@ v1_history:
     files: [all_symbols, symbols_by_exchange, symbols_by_industries, industries_icb, company_overview]
     table_prefix: ref_
 
+  # Daily flow history that v1 keeps as ONE file rewritten each day (a snapshot, not a log):
+  # loaded like the reference lists - a new snapshot only when the file's content changes -
+  # but partitioned and clustered like OHLCV, since a snapshot holds millions of rows.
+  # Measured 2026-10-15: foreign_trade 3,780,207 rows (77 MB parquet), prop_trade 149,381.
+  # Each changed snapshot adds a full copy to raw (~1 GB logical for foreign_trade), so
+  # reload history only when needed; staging reads the newest snapshot.
+  flows:
+    source_dir: vnstock_data
+    files: {foreign_trade: foreign_trade_daily, prop_trade: prop_trade_daily}  # file: table
+    partition_by_month_of: session_date
+    cluster_by: [symbol]
+
+  # Index history: v1 keeps it only in its DuckDB table (no parquet log), opened read-only.
+  # Loaded as a snapshot whose hash covers the table sorted by its key.
+  index:
+    duckdb_table: bronze_index
+    key: [index_code, session_date]
+    table: index_daily
+
   # Files whose name ends in anything other than ".parquet" (v1 keeps daily *.parquet.bak_<date>
   # snapshots next to the live files) are never read.
   file_suffix: .parquet

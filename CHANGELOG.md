@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Flows and index history (#26): `load_v1_history` loads v1's daily foreign and proprietary
+  flow files as content-hashed snapshots (partitioned and clustered like OHLCV) and v1's
+  index table, read read-only from its DuckDB, as a snapshot; after every run each current
+  snapshot is counted in the destination. Staging `stg_vnstock__foreign_trade`,
+  `stg_vnstock__prop_trade`, `stg_vnstock__index_daily` (newest snapshot; integer VND and
+  shares by trade type; index points). `tools/reconcile_v1.py` compares each newest
+  snapshot with v1 by content hash and per-symbol signatures. Planted faults cover the new
+  staging tests.
 - Data-quality tests (P3, #23): v1's checks for the layers v2 has, one condition each - price
   structure (close positive, close and open within the day's range, volume, multiple of
   10 VND), trading days and `session_seq`, ADV window and no look-ahead, no stale row in

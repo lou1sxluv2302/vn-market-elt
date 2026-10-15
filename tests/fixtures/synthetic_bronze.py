@@ -2,7 +2,7 @@
 
 Writes, under a given root, the same layout as v1's `data/bronze`:
 source=<s>/dataset=ohlcv_daily/ingest_date=<d>/*.parquet plus flat reference
-files under source=vnstock_data/. Each call with the same seed writes the same
+files and daily flow files under source=vnstock_data/. Each call with the same seed writes the same
 bytes, so self-tests have known answers.
 """
 
@@ -44,6 +44,31 @@ def ohlcv(source: str, ingest_date: str, rows: list[tuple[str, str, int]]) -> pa
     )
 
 
+def flows(rows: list[tuple[str, str, float]]) -> pa.Table:
+    """A flow file: (symbol, session_date, net value); v1's real files carry many more columns."""
+    symbols, dates, values = zip(*rows, strict=True) if rows else ((), (), ())
+    return pa.table(
+        {
+            "symbol": pa.array(list(symbols), pa.string()),
+            "session_date": pa.array([dt.date.fromisoformat(d) for d in dates], pa.date32()),
+            "net_val_total": pa.array(list(values), pa.float64()),
+        }
+    )
+
+
+def index_table(rows: list[tuple[str, str, float]]) -> pa.Table:
+    """v1's index table shape, sorted by key: (index_code, session_date, close)."""
+    rows = sorted(rows)
+    codes, dates, closes = zip(*rows, strict=True) if rows else ((), (), ())
+    return pa.table(
+        {
+            "index_code": pa.array(list(codes), pa.string()),
+            "session_date": pa.array([dt.date.fromisoformat(d) for d in dates], pa.date32()),
+            "close": pa.array(list(closes), pa.float64()),
+        }
+    )
+
+
 def write(path: Path, table: pa.Table) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(table, path)
@@ -51,8 +76,13 @@ def write(path: Path, table: pa.Table) -> Path:
 
 
 def bronze_tree(
-    root: Path, primary: str, fallback: str, reference_files: list[str], seed: int = 7
-) -> dict[str, Path]:
+    root: Path,
+    primary: str,
+    fallback: str,
+    reference_files: list[str],
+    flow_files: list[str],
+    seed: int = 7,
+) -> dict:
     """Write the standard synthetic tree; return paths the tests plant faults next to."""
     rng = random.Random(seed)  # noqa: S311 - reproducible test data, not security
     part = "dataset=ohlcv_daily"
@@ -82,7 +112,15 @@ def bronze_tree(
     ref_dir = root / "source=vnstock_data"
     for name in reference_files:
         write(ref_dir / f"{name}.parquet", pa.table({"symbol": ["AAA", "BBB"]}))
+    flow_paths = {
+        name: write(
+            ref_dir / f"{name}.parquet",
+            flows([("AAA", "2026-07-30", 1.5), ("BBB", "2026-07-31", -2.0)]),
+        )
+        for name in flow_files
+    }
     return {
+        "flows": flow_paths,
         "late": late,
         "first_partition": late.parent.parent / "ingest_date=2026-08-03",
         "reference_dir": ref_dir,

@@ -10,14 +10,19 @@ What is loaded (config/el.yml, `v1_history`):
 - daily OHLCV from the primary and the fallback source, one file at a time;
   every file is checked against v1's schema before anything is loaded;
 - the flat reference lists (symbols, exchanges, industries), as snapshots: a file
-  is loaded again only when its content changed (`_source_sha256`).
+  is loaded again only when its content changed (`_source_sha256`);
+- the daily foreign and proprietary flow files, which v1 rewrites whole every day: the
+  same snapshot rule, partitioned and clustered like OHLCV;
+- the index history, which v1 keeps only in its DuckDB table: read read-only, loaded as
+  a snapshot whose hash covers the table sorted by its key.
 
 Files already loaded are remembered in dlt state (stored in the destination with
 the data, in the same load package), so a rerun loads only new files. Column
-types are frozen. After the load, the rows of every file loaded in this run are
-counted in the destination and compared with the parquet. Files whose name does
-not end in ".parquet" (v1's *.parquet.bak_<date> snapshots) are never read;
-empty files are skipped and counted.
+types are frozen. After the load, the rows of every OHLCV file and every current
+snapshot are counted in the destination and compared with the source - all of them,
+not only this run's: dlt's state can claim a load the destination never received.
+Files whose name does not end in ".parquet" (v1's *.parquet.bak_<date> snapshots) are
+never read; empty files are skipped and counted.
 
 Credentials: no key. The owner's application-default credentials impersonate
 `sa-loader`, which can write `raw_vnstock` and nothing else (runbook:
@@ -113,7 +118,9 @@ OHLCV_LINEAGE = ["_source_file", "_ingest_partition"]
 REFERENCE_LINEAGE = ["_source_sha256", "_loaded_at"]
 
 
-def reserved_names(bronze_dir: Path, cfg: dict, files: list[OhlcvFile]) -> list[str]:
+def reserved_names(
+    bronze_dir: Path, cfg: dict, files: list[OhlcvFile], index_table: pa.Table | None = None
+) -> list[str]:
     """Columns whose name BigQuery refuses (reserved prefixes, case-insensitive). A local
     DuckDB destination accepts them, so only this check stops them before the cloud load."""
     prefixes = load_config("el")["bigquery_reserved_prefixes"]
@@ -123,6 +130,10 @@ def reserved_names(bronze_dir: Path, cfg: dict, files: list[OhlcvFile]) -> list[
     tables.setdefault(cfg["ohlcv"]["table"], []).extend(OHLCV_LINEAGE)
     for name, path in reference_files(bronze_dir, cfg).items():
         tables[name] = pq.read_schema(path).names + REFERENCE_LINEAGE
+    for name, path in flow_files(bronze_dir, cfg).items():
+        tables[name] = pq.read_schema(path).names + REFERENCE_LINEAGE
+    if index_table is not None:
+        tables[cfg["index"]["table"]] = index_table.schema.names + REFERENCE_LINEAGE
     return sorted(
         f"{table}.{column}"
         for table, columns in tables.items()
@@ -141,6 +152,39 @@ def reference_files(bronze_dir: Path, cfg: dict) -> dict[str, Path]:
     if missing:
         raise InputError(f"reference files missing: {missing}")
     return paths
+
+
+def flow_files(bronze_dir: Path, cfg: dict) -> dict[str, Path]:
+    """{destination table: v1 file} for the daily flow snapshots."""
+    flows = cfg["flows"]
+    paths = {
+        table: bronze_dir / f"source={flows['source_dir']}" / f"{name}{cfg['file_suffix']}"
+        for name, table in flows["files"].items()
+    }
+    missing = [str(p) for p in paths.values() if not p.exists()]
+    if missing:
+        raise InputError(f"flow files missing: {missing}")
+    return paths
+
+
+def read_index(duckdb_path: Path, cfg: dict) -> pa.Table:
+    """v1's index history, sorted by its key, from v1's DuckDB opened read-only."""
+    import duckdb
+
+    ix = cfg["index"]
+    with duckdb.connect(str(duckdb_path), read_only=True) as con:
+        # Table and key names come from config/el.yml, not from input.
+        sql = f"select * from {ix['duckdb_table']} order by {', '.join(ix['key'])}"  # noqa: S608
+        return con.execute(sql).to_arrow_table()
+
+
+def table_sha256(table: pa.Table) -> str:
+    """Content hash of an Arrow table (its IPC stream): same rows in the same order and the
+    same schema give the same hash."""
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table)
+    return hashlib.sha256(sink.getvalue().to_pybytes()).hexdigest()
 
 
 def sha256_of(path: Path) -> str:
@@ -186,13 +230,59 @@ def with_columns(table: pa.Table, **columns: tuple[Any, pa.DataType]) -> pa.Tabl
     return table
 
 
+@dataclass(frozen=True)
+class Snapshot:
+    """One snapshot table: its current content hash and row count, and how to read it."""
+
+    table: str
+    digest: str
+    rows: int
+    read: Any  # () -> pa.Table, called only when the snapshot is new
+
+
+def snapshots(bronze_dir: Path, cfg: dict, index_table: pa.Table | None) -> list[Snapshot]:
+    """Every snapshot table with the content it should hold now."""
+    found = [
+        Snapshot(
+            f"{cfg['reference']['table_prefix']}{name}",
+            sha256_of(path),
+            pq.ParquetFile(path).metadata.num_rows,
+            lambda path=path: loadable(pq.read_table(path)),
+        )
+        for name, path in reference_files(bronze_dir, cfg).items()
+    ]
+    found += [
+        Snapshot(
+            table,
+            sha256_of(path),
+            pq.ParquetFile(path).metadata.num_rows,
+            lambda path=path: loadable(pq.read_table(path)),
+        )
+        for table, path in flow_files(bronze_dir, cfg).items()
+    ]
+    if index_table is not None:
+        found.append(
+            Snapshot(
+                cfg["index"]["table"],
+                table_sha256(index_table),
+                index_table.num_rows,
+                lambda: index_table,
+            )
+        )
+    return found
+
+
 def build_source(
-    bronze_dir: Path, cfg: dict, files: list[OhlcvFile], bigquery: bool, skipped_empty: list[str]
+    bronze_dir: Path,
+    cfg: dict,
+    files: list[OhlcvFile],
+    bigquery: bool,
+    skipped_empty: list[str],
+    current: list[Snapshot],
 ) -> Any:
-    """The dlt source: one OHLCV resource and one resource per reference list."""
+    """The dlt source: one OHLCV resource and one resource per snapshot table."""
     import dlt
 
-    refs = reference_files(bronze_dir, cfg)
     loaded_at = dt.datetime.now(dt.UTC)
     frozen = {"tables": "evolve", "columns": "freeze", "data_type": "freeze"}
 
@@ -219,28 +309,28 @@ def build_source(
                 ),
             )
 
-    def reference(name: str, path: Path) -> Any:
-        @dlt.resource(name=f"{cfg['reference']['table_prefix']}{name}", write_disposition="append")
+    def resource_for(snap: Snapshot) -> Any:
+        @dlt.resource(name=snap.table, write_disposition="append")
         def snapshot() -> Iterator[pa.Table]:
             state = dlt.current.resource_state()
-            digest = sha256_of(path)
-            if state.get("sha256") == digest:
+            if state.get("sha256") == snap.digest:
                 return
             yield with_columns(
-                loadable(pq.read_table(path)),
+                snap.read(),
                 **dict(
                     zip(
                         REFERENCE_LINEAGE,
-                        [(digest, pa.string()), (loaded_at, pa.timestamp("us", tz="UTC"))],
+                        [(snap.digest, pa.string()), (loaded_at, pa.timestamp("us", tz="UTC"))],
                         strict=True,
                     )
                 ),
             )
-            state["sha256"] = digest
+            state["sha256"] = snap.digest
 
         return snapshot
 
-    resources = [ohlcv] + [reference(name, path) for name, path in refs.items()]
+    by_table = {snap.table: resource_for(snap) for snap in current}
+    resources = [ohlcv, *by_table.values()]
     if bigquery:
         from dlt.destinations.adapters import bigquery_adapter
         from dlt.destinations.impl.bigquery.bigquery_adapter import PartitionTransformation
@@ -251,6 +341,14 @@ def build_source(
             partition=PartitionTransformation("DATE_TRUNC({column_name}, MONTH)", column),
             cluster=cfg["ohlcv"]["cluster_by"],
         )
+        for table in cfg["flows"]["files"].values():
+            bigquery_adapter(
+                by_table[table],
+                partition=PartitionTransformation(
+                    "DATE_TRUNC({column_name}, MONTH)", cfg["flows"]["partition_by_month_of"]
+                ),
+                cluster=cfg["flows"]["cluster_by"],
+            )
 
     @dlt.source(name=cfg["pipeline_name"])
     def v1_history() -> list:
@@ -259,20 +357,28 @@ def build_source(
     return v1_history()
 
 
-def load(pipeline: Any, bronze_dir: Path, cfg: dict, until: dt.date | None, bigquery: bool) -> int:
-    """Run the pipeline, then count every expected file in the destination - not only new
-    ones: dlt's local state can claim a file is loaded when the destination never got it."""
+def load(
+    pipeline: Any,
+    bronze_dir: Path,
+    cfg: dict,
+    until: dt.date | None,
+    bigquery: bool,
+    index_table: pa.Table | None = None,
+) -> int:
+    """Run the pipeline, then count every expected file and snapshot in the destination - not
+    only new ones: dlt's local state can claim a load the destination never got."""
     from dlt.pipeline.exceptions import PipelineStepFailed
 
     files = ohlcv_files(bronze_dir, cfg, until)
     expected = {item.relative: check_schema(item) for item in files}  # refuse before loading
-    refused = reserved_names(bronze_dir, cfg, files)
+    refused = reserved_names(bronze_dir, cfg, files, index_table)
     if refused:
         raise InputError(f"column names BigQuery refuses: {refused}")
+    current = snapshots(bronze_dir, cfg, index_table)
     before = tree_fingerprint([bronze_dir])
     skipped_empty: list[str] = []
     try:
-        pipeline.run(build_source(bronze_dir, cfg, files, bigquery, skipped_empty))
+        pipeline.run(build_source(bronze_dir, cfg, files, bigquery, skipped_empty, current))
     except PipelineStepFailed as exc:
         print(f"🔴 load failed at step {exc.step}: {exc.exception}")
         print("   See docs/runbooks/p1-history-load.md, 'If a load fails'.")
@@ -289,18 +395,38 @@ def load(pipeline: Any, bronze_dir: Path, cfg: dict, until: dt.date | None, bigq
     wrong = [f for f in wanted if counts.get(f) != expected[f]]
     for name in wrong[:20]:
         print(f"     {name}: parquet {expected[name]} rows, destination {counts.get(name)}")
+    snapshot_wrong = []
+    with pipeline.sql_client() as client:
+        for snap in current:
+            qualified = client.make_qualified_table_name(snap.table)
+            try:
+                # The digest is a hex string computed here, safe to inline.
+                got = client.execute_sql(
+                    f"select count(*) from {qualified} where _source_sha256 = '{snap.digest}'"  # noqa: S608
+                )[0][0]
+            except Exception:  # noqa: BLE001 - a missing table is a missing snapshot
+                got = None
+            if got != snap.rows:
+                snapshot_wrong.append(snap.table)
+                print(f"     {snap.table}: source {snap.rows} rows, destination {got}")
     changed = tree_fingerprint([bronze_dir]) != before
     print(f"Files expected: {len(wanted)}; empty files skipped: {len(skipped_empty)}")
     print(
         f"{'🔴' if wrong else '✅'} every expected file has its exact row count in the destination"
     )
-    if wrong:
-        print("   dlt's state may list files the destination lacks: runbook, 'If a load fails'.")
+    print(
+        f"{'🔴' if snapshot_wrong else '✅'} every snapshot ({len(current)}) holds its "
+        "current content's row count in the destination"
+    )
+    if wrong or snapshot_wrong:
+        print("   dlt's state may list loads the destination lacks: runbook, 'If a load fails'.")
     print(f"{'🔴' if changed else '✅'} v1's files unchanged during the run")
-    return 1 if wrong or changed else 0
+    return 1 if wrong or snapshot_wrong or changed else 0
 
 
-def dry_run(bronze_dir: Path, cfg: dict, until: dt.date | None) -> int:
+def dry_run(
+    bronze_dir: Path, cfg: dict, until: dt.date | None, index_table: pa.Table | None = None
+) -> int:
     files = ohlcv_files(bronze_dir, cfg, until)
     totals: dict[str, int] = {}
     for item in files:
@@ -318,12 +444,18 @@ def dry_run(bronze_dir: Path, cfg: dict, until: dt.date | None) -> int:
         print(f"  {source}: {rows:,} rows")
     for name, path in reference_files(bronze_dir, cfg).items():
         print(f"  reference {name}: {pq.ParquetFile(path).metadata.num_rows:,} rows")
+    for table, path in flow_files(bronze_dir, cfg).items():
+        print(f"  flows {table}: {pq.ParquetFile(path).metadata.num_rows:,} rows")
+    if index_table is not None:
+        print(f"  index {cfg['index']['table']}: {index_table.num_rows:,} rows")
     print(f"Never read (not *.parquet) in the configured sources: {len(never_read)} files")
     print("Dry run: nothing loaded. --apply loads; files already loaded are skipped then.")
     return 0
 
 
-def apply(bronze_dir: Path, cfg: dict, env: dict, until: dt.date | None) -> int:
+def apply(
+    bronze_dir: Path, cfg: dict, env: dict, until: dt.date | None, index_table: pa.Table
+) -> int:
     import os
 
     import dlt
@@ -355,7 +487,7 @@ def apply(bronze_dir: Path, cfg: dict, env: dict, until: dt.date | None) -> int:
         destination=bigquery(credentials=credentials, location=cfg["bq_location"]),
         dataset_name=cfg["dataset"],
     )
-    return load(pipeline, bronze_dir, cfg, until, bigquery=True)
+    return load(pipeline, bronze_dir, cfg, until, bigquery=True, index_table=index_table)
 
 
 def self_test() -> int:
@@ -370,11 +502,15 @@ def self_test() -> int:
     primary, fallback = cfg["ohlcv"]["sources"]
     table = f"raw.{cfg['ohlcv']['table']}"
     ref_table = f"raw.{cfg['reference']['table_prefix']}all_symbols"
+    flow_table = f"raw.{cfg['flows']['files']['foreign_trade']}"
+    index_dest = f"raw.{cfg['index']['table']}"
     checks: dict[str, bool] = {}
 
     def setup(tmp: Path) -> tuple[Path, dict, Any]:
         bronze = tmp / "bronze"
-        paths = fx.bronze_tree(bronze, primary, fallback, cfg["reference"]["files"])
+        paths = fx.bronze_tree(
+            bronze, primary, fallback, cfg["reference"]["files"], list(cfg["flows"]["files"])
+        )
         pipeline = dlt.pipeline(
             pipeline_name="self_test",
             pipelines_dir=str(tmp / "pipelines"),
@@ -391,13 +527,16 @@ def self_test() -> int:
     with tempfile.TemporaryDirectory() as name:
         tmp = Path(name)
         bronze, paths, pipeline = setup(tmp)
+        index_v1 = fx.index_table(
+            [("VNINDEX", "2026-07-31", 1300.5), ("VN30", "2026-07-31", 1400.25)]
+        )
         # Planted: a backup snapshot and an empty file next to live files.
         fx.write(
             paths["first_partition"] / "a.parquet.bak_20260804",
             fx.ohlcv(primary, "2026-08-03", [("ZZZ", "2026-07-30", 1)]),
         )
         fx.write(paths["first_partition"] / "e.parquet", fx.ohlcv(primary, "2026-08-03", []))
-        first_code = load(pipeline, bronze, cfg, cutoff, bigquery=False)
+        first_code = load(pipeline, bronze, cfg, cutoff, bigquery=False, index_table=index_v1)
         first = query(tmp, f"select count(*), count(distinct _source_file) from {table}")[0]
         revisions = query(
             tmp,
@@ -410,16 +549,24 @@ def self_test() -> int:
             "or _ingest_partition is null or _source_id is null",
         )
         ref_first = query(tmp, f"select count(*) from {ref_table}")
-        rerun_code = load(pipeline, bronze, cfg, cutoff, bigquery=False)
+        flow_first = query(tmp, f"select count(*) from {flow_table}")
+        index_first = query(tmp, f"select count(*) from {index_dest}")
+        rerun_code = load(pipeline, bronze, cfg, cutoff, bigquery=False, index_table=index_v1)
         rerun = query(tmp, f"select count(*) from {table}")[0][0]
         ref_rerun = query(tmp, f"select count(*) from {ref_table}")
+        flow_rerun = query(tmp, f"select count(*) from {flow_table}")
+        index_rerun = query(tmp, f"select count(*) from {index_dest}")
         fx.write(
             paths["reference_dir"] / "all_symbols.parquet",
             fx.pa.table({"symbol": ["AAA", "BBB", "DDD"]}),
         )
-        final_code = load(pipeline, bronze, cfg, None, bigquery=False)
+        fx.write(paths["flows"]["foreign_trade"], fx.flows([("AAA", "2026-07-31", 5.0)] * 3))
+        index_v2 = fx.index_table([("VNINDEX", "2026-07-31", 1300.5)])
+        final_code = load(pipeline, bronze, cfg, None, bigquery=False, index_table=index_v2)
         final = query(tmp, f"select count(*) from {table}")[0][0]
         ref_changed = query(tmp, f"select count(*) from {ref_table}")
+        flow_changed = query(tmp, f"select count(*) from {flow_table}")
+        index_changed = query(tmp, f"select count(*) from {index_dest}")
         dry_code = dry_run(bronze, cfg, None)
         dry_after = query(tmp, f"select count(*) from {table}")[0][0]
         checks.update(
@@ -434,6 +581,12 @@ def self_test() -> int:
                 and final == 6,
                 "unchanged reference file is not loaded twice": ref_first == ref_rerun == [(2,)],
                 "changed reference file is loaded as a new snapshot": ref_changed == [(5,)],
+                "flow and index snapshots load with their rows": flow_first == [(2,)]
+                and index_first == [(2,)],
+                "unchanged flow and index snapshots are not loaded twice": flow_rerun == flow_first
+                and index_rerun == index_first,
+                "changed flow file and index are loaded as new snapshots": flow_changed == [(5,)]
+                and index_changed == [(3,)],
                 "dry run writes nothing": dry_code == 0 and dry_after == final,
             }
         )
@@ -489,6 +642,41 @@ def self_test() -> int:
         checks["planted file in state but missing from the destination fails the run"] = (
             lost_code == 1
         )
+    with tempfile.TemporaryDirectory() as name:
+        tmp = Path(name)
+        bronze, paths, pipeline = setup(tmp)
+        clean_code = load(pipeline, bronze, cfg, None, bigquery=False)
+        # Planted after a clean load: dlt's state lists a snapshot whose rows are gone.
+        with duckdb.connect(str(tmp / "dest.duckdb")) as con:
+            con.execute(f"delete from {flow_table}")
+        lost_snapshot = load(pipeline, bronze, cfg, None, bigquery=False)
+        checks["planted snapshot in state but missing from the destination fails the run"] = (
+            clean_code == 0 and lost_snapshot == 1
+        )
+
+    with tempfile.TemporaryDirectory() as name:
+        # read_index: sorted by key and read-only; the hash ignores insertion order.
+        db = Path(name) / "v1.duckdb"
+        with duckdb.connect(str(db)) as con:
+            con.execute(
+                "create table bronze_index (index_code varchar, session_date date, close double)"
+            )
+            con.execute(
+                "insert into bronze_index values ('VNINDEX', '2026-07-31', 2), "
+                "('VN30', '2026-07-31', 1), ('VNINDEX', '2026-07-30', 3)"
+            )
+        first_read = read_index(db, cfg)
+        with duckdb.connect(str(db)) as con:
+            rows = con.execute("select * from bronze_index").fetchall()
+            con.execute("delete from bronze_index")
+            for r in reversed(rows):
+                con.execute("insert into bronze_index values (?, ?, ?)", list(r))
+        second_read = read_index(db, cfg)
+        checks["index read sorted by key; same rows in any order give the same hash"] = first_read[
+            "index_code"
+        ].to_pylist() == ["VN30", "VNINDEX", "VNINDEX"] and table_sha256(
+            first_read
+        ) == table_sha256(second_read)
 
     with tempfile.TemporaryDirectory() as name:
         tmp = Path(name)
@@ -521,6 +709,12 @@ def self_test() -> int:
     return 0 if all(checks.values()) else 1
 
 
+def duckdb_error() -> type[Exception]:
+    import duckdb
+
+    return duckdb.Error
+
+
 def main() -> int:
     utf8_stdio()
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -540,11 +734,16 @@ def main() -> int:
         cfg = load_config("el")["v1_history"]
         env = load_env()
         bronze_dir = Path(env["v1"]["bronze_dir"])
+        # Read once, read-only; v1's daily job holds the file 15:00-16:00 (runbook).
+        index_table = read_index(Path(env["v1"]["duckdb_path"]), cfg)
         if args.apply:
-            return apply(bronze_dir, cfg, env, args.until_ingest_date)
-        return dry_run(bronze_dir, cfg, args.until_ingest_date)
+            return apply(bronze_dir, cfg, env, args.until_ingest_date, index_table)
+        return dry_run(bronze_dir, cfg, args.until_ingest_date, index_table)
     except (FileNotFoundError, KeyError, InputError) as exc:
         print(f"⚪ not run: {exc}", file=sys.stderr)
+        return 2
+    except duckdb_error() as exc:
+        print(f"⚪ not run: v1's DuckDB could not be read (its daily job?): {exc}", file=sys.stderr)
         return 2
 
 
