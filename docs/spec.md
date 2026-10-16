@@ -121,7 +121,7 @@ onward that no vendor can rewrite**.
 ```
                      ┌──────────── VM collector-prod-01 (e2-micro, us-central1) ────────────┐
 VPS feed (WebSocket) ┼─► stream_collector (systemd 08:55-15:05) ─► parquet batch / 60 s ─────┼─► GCS raw bucket
-                     │   healthcheck: no new message > 3 min ⇒ email                         │        │
+                     │   Cloud Monitoring: no batch > 3 min ⇒ email                          │        │
                      │   ingress: IAP only · runs as user `collector` · tag-pinned release   │        ▼
                      └───────────────────────────────────────────────────────────────────────┘  BigQuery raw_vps_stream
                                                                                                          │
@@ -239,7 +239,7 @@ decide whether to upsize (leaves the free tier).
 
 - `stream_collector.py`: WebSocket → buffer → every **60 s** write `dt=YYYY-MM-DD/batch=HHMMSS.parquet`, storing the **verbatim message** (`payload` JSON) + `received_at` + `batch_id`; parsing is dbt's job.
 - `uploader.py`: upload batches to GCS with retries and timeouts.
-- `healthcheck.py`: during trading hours, **no new message for 3 min** ⇒ email.
+- Alert: during trading hours, **no new batch for 3 min** ⇒ email, from Cloud Monitoring outside the collector's machine (ADR-0030; replaces a `healthcheck.py` on the machine, which could not mail while its network is cut).
 - `infra/systemd/vnmarket-collector.service` + `.timer`: restart on failure; start **08:55**, stop **15:05**, Mon-Fri; systemd sandboxing (§14.4).
 - Holiday calendar from seed `trading_calendar`, **copied once** from the main repo with provenance. No row for today ⇒ **run anyway** (a missed real session is lost forever; an unnecessary run costs one warning).
 - Deployment: the VM checks out **exactly one tag** (D17) via `infra/deploy.sh <tag>`.
@@ -346,7 +346,7 @@ this estimate is wrong.
 | Risk | Impact | Mitigation |
 |---|---|---|
 | VPS feed blocks non-Vietnamese IPs | D6 fails | Tested in S0.4; two fallbacks at the S0 gate |
-| Collector dies mid-session unnoticed | Rest of the session lost forever | `healthcheck.py` from S1; **no alert ⇒ S1 not done** |
+| Collector dies mid-session unnoticed | Rest of the session lost forever | Cloud Monitoring alert from S1 (ADR-0030); **no alert ⇒ S1 not done** |
 | 1 GB RAM insufficient | OOM | Measured in S0.4 |
 | vnstock device slots exhausted | Process dies at import | Persistent disk (D7); check device page first (S0.3) |
 | Cost overrun | Money | Budget alert · date partitions · manual refresh · measure IPv4 charge |

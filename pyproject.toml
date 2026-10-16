@@ -16,6 +16,9 @@ dev = ["ruff==0.17.0", "pre-commit==4.6.2", "pip-audit==2.10.1"]
 el = ["dlt[bigquery,duckdb]==1.30.0"]
 # Transformations (P2 on); dbt-duckdb runs the unit tests in CI without a warehouse.
 dbt = ["dbt-core==1.12.5", "dbt-bigquery==1.12.1", "dbt-duckdb==1.11.0"]
+# Stream collector (S1). The licensed feed library is installed separately on the machine
+# that holds the licence; tzdata gives Windows the IANA time zones.
+collector = ["pyarrow==26.0.0", "google-cloud-storage==3.1.1", "google-crc32c==1.9.0", "tzdata==2026.5"]
 
 [build-system]
 requires = ["setuptools>=69"]
