@@ -14,3 +14,32 @@
     from {{ model }}
     where not ({{ condition }})
 {% endtest %}
+
+{# flows.md §2.3: on a row whose split is valid, match + put-through = total for every side
+   and unit, within `flow_breakdown_tolerance`. Fails on: invalid rows marked valid. #}
+{% test breakdown_identity_holds(model, prefix) %}
+    select symbol, trade_date
+    from {{ model }}
+    where is_breakdown_valid
+        and not (
+            {%- for side in ['buy', 'sell'] %}{% for unit in ['qty', 'value_vnd'] %}
+            abs({{ prefix }}_{{ side }}_match_{{ unit }} + {{ prefix }}_{{ side }}_put_through_{{ unit }}
+                - {{ prefix }}_{{ side }}_total_{{ unit }}) <= {{ var('flow_breakdown_tolerance') }}
+            {%- if not loop.last %} and{% endif %}{% endfor %}{% if not loop.last %} and{% endif %}
+            {%- endfor %}
+        )
+{% endtest %}
+
+{# flows.md §2.3: a row whose split is invalid shows no match or put-through value (they
+   would read as real zeros). Fails on: the split kept on an invalid row. #}
+{% test split_null_when_invalid(model, prefix) %}
+    select symbol, trade_date
+    from {{ model }}
+    where not is_breakdown_valid
+        and coalesce(
+            {%- for side in ['buy', 'sell', 'net'] %}{% for kind in ['match', 'put_through'] %}{% for unit in ['qty', 'value_vnd'] %}
+            {{ prefix }}_{{ side }}_{{ kind }}_{{ unit }}{% if not loop.last %},{% endif %}
+            {%- endfor %}{% if not loop.last %},{% endif %}{% endfor %}{% if not loop.last %},{% endif %}
+            {%- endfor %}
+        ) is not null
+{% endtest %}

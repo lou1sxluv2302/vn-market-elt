@@ -45,6 +45,13 @@ vars:
   liquidity_tier_low_vnd: 10000000000
   universe_tiers: [HIGH, MEDIUM, LOW]
 
+  # Flows (docs/knowledge/flows.md §2.3). Match + put-through = total, per side and unit.
+  # Measured on prod staging 2026-10-16 (foreign, rows v1 marked valid): 3,647,843 exact,
+  # 0 off by 1-2 (rounding never shows), 4,731 off by 3 or more (4,664 by more than 1,000);
+  # prop: 142,665 exact, 176 off by more than 1,000. So any gap marks the split invalid.
+  flow_breakdown_tolerance: 0
+  foreign_breakdown_valid_from: "2020-01-02"   # flows.md: earlier splits carried 0 for no data
+
   # Data-quality tests (P3, docs/knowledge/data-quality-lessons.md). The watched symbols and
   # the falling-market windows are v1's choices (dq test 18, validate_all group D), kept as
   # v1 had them and never measured in v2; the planted-fault fixture overrides them.

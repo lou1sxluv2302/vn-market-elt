@@ -7,6 +7,13 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Flow and index marts (#26): `fct_foreign_flow_daily`, `fct_prop_flow_daily` (totals
+  always; the match / put-through split only where match + put-through = total on every
+  side and unit, and for foreign flow from 2020-01-02; `prop_data_available`) and
+  `fct_index_daily` (index points). Macro `null_invalid_flow_split` (net derived as buy minus sell), generic tests
+  `breakdown_identity_holds` and `split_null_when_invalid`, a known-answer unit test,
+  planted faults for every new test. Terraform: dataset `marts_research` and
+  `dev_marts_research` for the research project.
 - Flows and index history (#26): `load_v1_history` loads v1's daily foreign and proprietary
   flow files as content-hashed snapshots (partitioned and clustered like OHLCV) and v1's
   index table, read read-only from its DuckDB, as a snapshot; after every run each current
