@@ -18,6 +18,7 @@ Usage:
     python tools/check_palette.py [--config PATH]
     python tools/check_palette.py --self-test
 """
+
 from __future__ import annotations
 
 import argparse
@@ -65,7 +66,7 @@ def parse_hex(colour: str) -> Rgb:
     value = colour.strip().lstrip("#")
     if len(value) != 6:
         raise ValueError(f"not a #RRGGBB colour: {colour!r}")
-    return tuple(int(value[i:i + 2], 16) / 255 for i in (0, 2, 4))  # type: ignore[return-value]
+    return tuple(int(value[i : i + 2], 16) / 255 for i in (0, 2, 4))  # type: ignore[return-value]
 
 
 def to_linear(c: float) -> float:
@@ -144,7 +145,9 @@ def ciede2000(lab1: Lab, lab2: Lab) -> float:
     s_h = 1 + 0.015 * cp_bar * t
     r_t = -math.sin(math.radians(2 * d_theta)) * r_c
     return math.sqrt(
-        (dlp / s_l) ** 2 + (dcp / s_c) ** 2 + (dhp_big / s_h) ** 2
+        (dlp / s_l) ** 2
+        + (dcp / s_c) ** 2
+        + (dhp_big / s_h) ** 2
         + r_t * (dcp / s_c) * (dhp_big / s_h)
     )
 
@@ -211,7 +214,8 @@ def check_rule(rule: dict, colours: dict[str, str]) -> list[tuple[bool, str]]:
             lines.append((value >= rule["min"], f"{fg} on {bg}: {value:.2f}:1 (min {rule['min']})"))
     elif rule["kind"] in ("distance", "distance_all"):
         pairs = (
-            rule["pairs"] if rule["kind"] == "distance"
+            rule["pairs"]
+            if rule["kind"] == "distance"
             else list(itertools.combinations(rule["colours"], 2))
         )
         for (a, b), vision in itertools.product(pairs, rule.get("vision", ["normal"])):
@@ -285,13 +289,15 @@ def self_test() -> int:
     )
     checks["simulated deficiency keeps greys grey"] = all(
         max(abs(x - y) for x, y in zip(linear_rgb(g, v), linear_rgb(g), strict=True)) < 2e-3
-        for g in ("#202020", "#808080", "#E0E0E0") for v in CVD_MATRICES
+        for g in ("#202020", "#808080", "#E0E0E0")
+        for v in CVD_MATRICES
     )
     # Protanopes lack long-wave cones, so red looks much darker to them than to
     # deuteranopes; swapping the two matrices fails this.
     red_luminance = {
-        v: sum(w * c for w, c in zip((0.2126, 0.7152, 0.0722), linear_rgb("#FF0000", v),
-                                     strict=True))
+        v: sum(
+            w * c for w, c in zip((0.2126, 0.7152, 0.0722), linear_rgb("#FF0000", v), strict=True)
+        )
         for v in ("protanopia", "deuteranopia")
     }
     checks["protanopia darkens red more than deuteranopia"] = (
@@ -302,27 +308,46 @@ def self_test() -> int:
     )
 
     rules = [
-        {"name": "text contrast", "kind": "contrast", "fg": ["text"], "bg": ["background"],
-         "min": 4.5},
-        {"name": "up vs down", "kind": "distance", "pairs": [["up", "down"]],
-         "vision": list(VISIONS), "min": 8},
+        {
+            "name": "text contrast",
+            "kind": "contrast",
+            "fg": ["text"],
+            "bg": ["background"],
+            "min": 4.5,
+        },
+        {
+            "name": "up vs down",
+            "kind": "distance",
+            "pairs": [["up", "down"]],
+            "vision": list(VISIONS),
+            "min": 8,
+        },
         {"name": "neutral midpoint", "kind": "max_chroma", "colours": ["neutral"], "max": 0.02},
     ]
-    good = {"text": "#1A1A1A", "background": "#FFFFFF", "up": "#00704A", "down": "#E8833A",
-            "neutral": "#EEEEEE"}
+    good = {
+        "text": "#1A1A1A",
+        "background": "#FFFFFF",
+        "up": "#00704A",
+        "down": "#E8833A",
+        "neutral": "#EEEEEE",
+    }
     cases = {
         "control palette fails no rule": (good, set()),
         "planted low-contrast text fails only text contrast": (
-            {**good, "text": "#9A9A9A"}, {"text contrast"}
+            {**good, "text": "#9A9A9A"},
+            {"text contrast"},
         ),
         "planted equal-lightness red/green fails only up vs down": (
-            {**good, "up": "#5F8F3A", "down": "#B8653F"}, {"up vs down"}
+            {**good, "up": "#5F8F3A", "down": "#B8653F"},
+            {"up vs down"},
         ),
         "planted yellow midpoint fails only neutral midpoint": (
-            {**good, "neutral": "#F5E6A0"}, {"neutral midpoint"}
+            {**good, "neutral": "#F5E6A0"},
+            {"neutral midpoint"},
         ),
         "planted missing colour fails only the rule that names it": (
-            {k: v for k, v in good.items() if k != "down"}, {"up vs down"}
+            {k: v for k, v in good.items() if k != "down"},
+            {"up vs down"},
         ),
     }
     for name, (colours, expected) in cases.items():
@@ -330,13 +355,17 @@ def self_test() -> int:
         checks[name] = {rule for _, rule in got} == expected
     with tempfile.TemporaryDirectory() as tmp:
         broken = Path(tmp) / "palette.yml"
-        broken.write_text(yaml.safe_dump(
-            {"themes": {"t": good}, "rules": [{"name": "x", "kind": "hue_angle"}]}
-        ), encoding="utf-8")
+        broken.write_text(
+            yaml.safe_dump({"themes": {"t": good}, "rules": [{"name": "x", "kind": "hue_angle"}]}),
+            encoding="utf-8",
+        )
         checks["an unknown rule kind is a config error, exit 2"] = check(broken) == 2
-    checks["an unknown argument is rejected with exit 2"] = subprocess.run(  # noqa: S603
-        [sys.executable, __file__, "--bogus"], capture_output=True, timeout=60
-    ).returncode == 2
+    checks["an unknown argument is rejected with exit 2"] = (
+        subprocess.run(  # noqa: S603
+            [sys.executable, __file__, "--bogus"], capture_output=True, timeout=60
+        ).returncode
+        == 2
+    )
     print()
     for name, ok in checks.items():
         print(f"{'✅' if ok else '🔴'} {name}")

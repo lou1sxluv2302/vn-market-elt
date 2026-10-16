@@ -18,6 +18,45 @@ models:
       - name: symbol
         data_tests: [unique, not_null]
 
+  - name: stg_vnstock__foreign_trade
+    description: Newest snapshot of the foreign flow file; integer VND and shares by trade type.
+    columns:
+      - name: symbol
+        data_tests: [not_null]
+      - name: trade_date
+        data_tests: [not_null]
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, trade_date]
+      - not_empty
+
+  - name: stg_vnstock__prop_trade
+    description: Newest snapshot of the proprietary flow file; best-effort, from 2020.
+    columns:
+      - name: symbol
+        data_tests: [not_null]
+      - name: trade_date
+        data_tests: [not_null]
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, trade_date]
+      - not_empty
+
+  - name: stg_vnstock__index_daily
+    description: Newest snapshot of the index table, in index points.
+    columns:
+      - name: index_code
+        data_tests: [not_null]
+      - name: trade_date
+        data_tests: [not_null]
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [index_code, trade_date]
+      - not_empty
+
 unit_tests:
   - name: latest_pull_wins_per_source
     description: >
@@ -41,3 +80,18 @@ unit_tests:
         - {_source_id: p, symbol: BBB, trade_date: 2026-07-31, close_vnd: 3}
         - {_source_id: p, symbol: CCC, trade_date: 2026-07-31, close_vnd: 5}
         - {_source_id: f, symbol: AAA, trade_date: 2026-07-31, close_vnd: 7}
+
+  - name: newest_snapshot_wins
+    description: >
+      Only the newest snapshot (latest _loaded_at) is staged, even when an older one holds
+      more rows; doubles become integer VND and shares, named by trade type.
+    model: stg_vnstock__foreign_trade
+    given:
+      - input: source('vnstock', 'foreign_trade_daily')
+        rows:
+          - {symbol: AAA, session_date: 2026-07-30, fr_buy_val_matched: 1.0, _loaded_at: "2026-08-01 09:00:00+00"}
+          - {symbol: AAA, session_date: 2026-07-31, fr_buy_val_matched: 2.0, _loaded_at: "2026-08-01 09:00:00+00"}
+          - {symbol: AAA, session_date: 2026-07-31, fr_buy_val_matched: 1500000.4, fr_buy_vol_total: 99.6, _loaded_at: "2026-08-02 09:00:00+00"}
+    expect:
+      rows:
+        - {symbol: AAA, trade_date: 2026-07-31, foreign_buy_match_value_vnd: 1500000, foreign_buy_total_qty: 100}

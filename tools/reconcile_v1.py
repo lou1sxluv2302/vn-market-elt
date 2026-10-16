@@ -19,7 +19,11 @@
    unknown source fails.
 3. reference lists = parquet: the newest snapshot of each list has the file's row
    count and content hash.
-4. v1 untouched: v1's bronze tree and DuckDB files are byte-for-byte as before.
+4. flows and index = v1: the newest snapshot of the foreign and proprietary flow
+   files and of v1's index table has the source's content hash, and per symbol (index
+   code) the same signature - row count, date range, and for every numeric column a
+   plain and a date-weighted sum (floating-point sums compared to a relative 1e-9).
+5. v1 untouched: v1's bronze tree and DuckDB files are byte-for-byte as before.
 
 Per-symbol signatures (count, dates, sums, date-weighted checksums) are compared
 first; rows are fetched only for symbols whose signature differs, plus every
@@ -58,9 +62,12 @@ import pyarrow.parquet as pq
 from vnmarket.common.config import load_config, load_env, utf8_stdio
 from vnmarket.el.load_v1_history import (
     InputError,
+    flow_files,
     ohlcv_files,
+    read_index,
     reference_files,
     sha256_of,
+    table_sha256,
     tree_fingerprint,
 )
 
@@ -107,6 +114,55 @@ def differing(con: duckdb.DuckDBPyConnection, left: str, right: str, keys: list[
     return con.execute(
         f"select {pick} from {left} a full join {right} b on {on} where {unequal}"
     ).fetchall()
+
+
+def snapshot_signature(
+    dialect: str, key: str, numeric: list[str], modulus: int, date_column: str = "session_date"
+) -> str:
+    """Per-key signature of a snapshot: rows, date range, plain and date-weighted sums of
+    every numeric column. Same SQL on BigQuery and DuckDB but for the day number."""
+    day = (
+        f"unix_date({date_column})"
+        if dialect == "bigquery"
+        else f"date_diff('day', date '1970-01-01', {date_column})"
+    )
+    weight = f"(mod({day}, {modulus}) + 1)"
+    parts = [
+        f"{key} as k",
+        "count(*) as n",
+        f"min({date_column}) as first_date",
+        f"max({date_column}) as last_date",
+    ]
+    for i, c in enumerate(numeric):
+        parts += [f"sum({c}) as s{i}", f"sum({c} * {weight}) as w{i}"]
+    return ", ".join(parts)
+
+
+def compare_signatures(a: pa.Table, b: pa.Table, tolerance: float) -> list[str]:
+    """Keys whose signatures differ (`a` raw, `b` v1): counts and dates exactly, sums to a
+    relative tolerance (floating-point sums depend on the order the engine adds them in)."""
+    left = {r["k"]: r for r in a.to_pylist()}
+    right = {r["k"]: r for r in b.to_pylist()}
+    differ = []
+    for k in sorted(set(left) | set(right), key=str):
+        x, y = left.get(k), right.get(k)
+        if x is None or y is None:
+            differ.append(f"{k}: only in {'v1' if x is None else 'raw'}")
+            continue
+        for column, u in x.items():
+            v = y.get(column)
+            if isinstance(u, float) or isinstance(v, float):
+                same = (u is None and v is None) or (
+                    u is not None
+                    and v is not None
+                    and abs(u - v) <= tolerance * max(abs(u), abs(v), 1.0)
+                )
+            else:
+                same = u == v
+            if not same:
+                differ.append(f"{k}: {column} {u} != {v}")
+                break
+    return differ
 
 
 # --- comparison logic (pure: arrow tables in, verdicts out) -------------------
@@ -299,7 +355,57 @@ def run() -> int:
             print(f"     {name}: newest snapshot {got[:1]} vs file rows {want[1]}")
     verdicts["reference lists = parquet (newest snapshot)"] = ref_ok
 
-    # 4. v1 untouched
+    # 4. flows and index = v1 (newest snapshot)
+    def numeric_columns(schema: pa.Schema, skip: set[str]) -> list[str]:
+        return [
+            f.name
+            for f in schema
+            if (pa.types.is_integer(f.type) or pa.types.is_floating(f.type)) and f.name not in skip
+        ]
+
+    snapshot_ok = True
+    duck = duckdb.connect()
+    sources = [
+        (
+            table,
+            path,
+            sha256_of(path),
+            "symbol",
+            "read_parquet('{}')".format(path.as_posix().replace("'", "''")),
+        )
+        for table, path in flow_files(bronze, cfg).items()
+    ]
+    index_v1 = read_index(duck_path, cfg)
+    duck.register("index_v1", index_v1)
+    sources.append((cfg["index"]["table"], None, table_sha256(index_v1), "index_code", "index_v1"))
+    for table, path, digest, key, from_v1 in sources:
+        schema = pq.read_schema(path) if path else index_v1.schema
+        numeric = numeric_columns(schema, {key})
+        dest = f"`{project}.{cfg['dataset']}.{table}`"
+        newest = bq(
+            f"select _source_sha256 from {dest} group by 1 order by max(_loaded_at) desc limit 1"
+        ).to_pylist()
+        if not newest or newest[0]["_source_sha256"] != digest:
+            snapshot_ok = False
+            print(f"     {table}: newest snapshot hash differs from v1's current content")
+            continue
+        v1_sig = duck.execute(
+            f"select {snapshot_signature('duckdb', key, numeric, modulus)} "
+            f"from {from_v1} group by 1"
+        ).to_arrow_table()
+        raw_sig = bq(
+            f"select {snapshot_signature('bigquery', key, numeric, modulus)} from {dest} "
+            f"where _source_sha256 = '{digest}' group by 1"
+        )
+        differ = compare_signatures(raw_sig, v1_sig, rec["signature_tolerance"])
+        for line in differ[:10]:
+            print(f"     {table} {line}")
+        print(f"     {table}: {len(v1_sig)} keys, {len(numeric)} numeric columns compared")
+        snapshot_ok = snapshot_ok and not differ
+    duck.close()
+    verdicts["flows and index = v1 (newest snapshot: hash and per-key signatures)"] = snapshot_ok
+
+    # 5. v1 untouched
     after = tree_fingerprint([p for p in v1_paths if p.exists()])
     verdicts["v1's files unchanged during the run (rerun outside 15:00-16:00 if not)"] = (
         after == before
@@ -444,6 +550,38 @@ def self_test() -> int:
         (fallback, 3),
         (primary, 2),
     ]
+
+    # Snapshot signatures: per key, exact counts and dates, sums to a relative tolerance.
+    flows_v1 = pa.table(
+        {
+            "symbol": ["AAA", "AAA", "BBB"],
+            "session_date": [dt.date(2026, 7, 30), dt.date(2026, 7, 31), dt.date(2026, 7, 31)],
+            "net": [0.1, 0.2, 5.0],
+        }
+    )
+    snap_sig = snapshot_signature("duckdb", "symbol", ["net"], modulus)
+
+    def sig_of(table: pa.Table) -> pa.Table:
+        c = duckdb.connect()
+        c.register("x", table)
+        return c.execute(f"select {snap_sig} from x group by 1").to_arrow_table()
+
+    def with_net(values: list[float]) -> pa.Table:
+        return flows_v1.set_column(2, "net", pa.array(values, pa.float64()))
+
+    reordered = sig_of(flows_v1.take([2, 1, 0]))
+    checks["snapshot signatures: same rows in another order give no difference"] = (
+        compare_signatures(sig_of(flows_v1), reordered, 1e-9) == []
+    )
+    checks["planted value change in a snapshot is caught"] = (
+        len(compare_signatures(sig_of(flows_v1), sig_of(with_net([0.1, 0.2, 5.5])), 1e-9)) == 1
+    )
+    checks["planted swap of two dates in a snapshot is caught"] = (
+        len(compare_signatures(sig_of(flows_v1), sig_of(with_net([0.2, 0.1, 5.0])), 1e-9)) == 1
+    )
+    checks["planted symbol missing from a snapshot is caught"] = compare_signatures(
+        sig_of(flows_v1.slice(0, 2)), sig_of(flows_v1), 1e-9
+    ) == ["BBB: only in v1"]
 
     checks["an unknown argument is rejected with exit 2"] = (
         subprocess.run(  # noqa: S603

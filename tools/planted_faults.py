@@ -229,6 +229,49 @@ def fixture() -> tuple[list[dict], list[dict]]:
     return rows, symbols
 
 
+OLDER_SNAPSHOT_AT = "2026-04-01 09:00:00+00"
+
+
+def flow_row(prefix: str, symbol: str, day: dt.date, value: float, at: str) -> dict:
+    row_ = {"symbol": symbol, "session_date": day, "breakdown_valid": True, "source": "fixture"}
+    for side in ("buy", "sell", "net"):
+        for unit in ("vol", "val"):
+            for src in ("matched", "deal", "total"):
+                row_[f"{prefix}_{side}_{unit}_{src}"] = value
+    return {**row_, "_source_sha256": f"sha-{at}", "_loaded_at": at}
+
+
+def snapshot_tables() -> dict[str, Rows]:
+    """Flow and index snapshots: an older and a newer one, so staging must pick the newest."""
+    days = SESSIONS[:5]
+    tables: dict[str, Rows] = {}
+    for prefix, table in (("fr", "foreign_trade_daily"), ("prop", "prop_trade_daily")):
+        tables[table] = [
+            flow_row(prefix, s, d, 1_000_000.0 * (i + 1), at)
+            for at in (OLDER_SNAPSHOT_AT, PULLED_AT)
+            for i, s in enumerate(sorted(LIQUID))
+            for d in days
+        ]
+    tables["index_daily"] = [
+        {
+            "index_code": code,
+            "session_date": d,
+            "open": 1300.0,
+            "high": 1310.5,
+            "low": 1295.25,
+            "close": 1305.75,
+            "volume": 1_000_000,
+            "_source_id": PRIMARY,
+            "_source_sha256": f"sha-{at}",
+            "_loaded_at": at,
+        }
+        for at in (OLDER_SNAPSHOT_AT, PULLED_AT)
+        for code in ("VNINDEX", "VN30")
+        for d in SESSIONS
+    ]
+    return tables
+
+
 # --- faults ---------------------------------------------------------------------------
 
 Rows = list[dict]
@@ -257,6 +300,7 @@ class Fault:
     seed_edits: tuple[tuple[str, SeedEdit], ...] = ()  # (seed name, rows -> rows)
     vars: dict | None = None
     after_build: Callable[[], Rows] | None = None  # raw rows loaded after the build
+    snapshots: Callable[[dict[str, Rows]], dict[str, Rows]] | None = None  # change snapshots
 
 
 def warn(*names: str) -> dict[str, str]:
@@ -339,6 +383,33 @@ FAULTS = [
             ),
         },
         data=lambda rows: [],
+    ),
+    Fault(
+        "empty_flow_and_index_snapshots",
+        "flow and index loads that wrote nothing",
+        fail(
+            "not_empty_stg_vnstock__foreign_trade_",
+            "not_empty_stg_vnstock__prop_trade_",
+            "not_empty_stg_vnstock__index_daily_",
+        ),
+        snapshots=lambda tables: dict.fromkeys(tables, []),
+    ),
+    Fault(
+        "older_snapshots_kept",
+        "the newest-snapshot filter lost in staging",
+        fail(
+            "unique_combination_stg_vnstock__foreign_trade_symbol__trade_date",
+            "unique_combination_stg_vnstock__prop_trade_symbol__trade_date",
+            "unique_combination_stg_vnstock__index_daily_index_code__trade_date",
+        ),
+        mutants=tuple(
+            Mutant(
+                f"models/staging/stg_vnstock__{name}.sql",
+                "where _loaded_at = (",
+                "where _loaded_at <= (",
+            )
+            for name in ("foreign_trade", "prop_trade", "index_daily")
+        ),
     ),
     Fault(
         "stale_rule_seeds",
@@ -857,6 +928,8 @@ def run_matrix(only: set[str], keep: Path | None) -> int:
         rows, symbols = fixture()
         load(db, "ohlcv_daily", rows, replace=True)
         load(db, "ref_symbols_by_exchange", symbols, replace=True)
+        for table, table_rows in snapshot_tables().items():
+            load(db, table, table_rows, replace=True)
         dbt_step(control, "seed", vars_=FIXTURE_VARS)
         dbt_step(control, "run", vars_=FIXTURE_VARS)
         results = dbt_test(control, FIXTURE_VARS)
@@ -885,6 +958,9 @@ def run_matrix(only: set[str], keep: Path | None) -> int:
             fault_db = project / "target" / "ci.duckdb"
             if fault.data:
                 load(fault_db, "ohlcv_daily", fault.data(fixture()[0]), replace=True)
+            if fault.snapshots:
+                for table, table_rows in fault.snapshots(snapshot_tables()).items():
+                    load(fault_db, table, table_rows, replace=True)
             if fault.seed_edits:
                 dbt_step(project, "seed", vars_=vars_)
             if fault.after_build:
@@ -991,7 +1067,12 @@ def self_test() -> int:
         )
         == ["test.p.s"],
         "faults: every as_of seed test is known": len(AS_OF) >= 5,
-        "fixture: deterministic": fixture() == (rows, symbols),
+        "fixture: deterministic": fixture() == (rows, symbols)
+        and snapshot_tables() == snapshot_tables(),
+        "fixture: every snapshot table has an older and a newer snapshot": all(
+            {r["_loaded_at"] for r in v} == {OLDER_SNAPSHOT_AT, PULLED_AT}
+            for v in snapshot_tables().values()
+        ),
         "fixture: every regular price is on its tick": all(
             r["close_vnd"] % base_and_tick(r["symbol"])[1] == 0
             for r in rows

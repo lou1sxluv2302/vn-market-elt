@@ -194,6 +194,7 @@ The free UDF endpoints (`{"t","o","h","l","c","v","s"}`) need no auth and return
 - Measure a witness's coverage on the population under test first ✅ (v1 03, L467). Prop volume covered 0 % of 324 small-cap violations.
 - Index data: v1 noted that index APIs lag 1-2 h after the close ❓ (v1 11 R2, L23). Keep a fallback, alert on a missing index session, and measure the lag.
 - From 2026-05-20 to 08-10, vnstock and VNDirect closes for VNINDEX, HNXINDEX and VN30 drifted by 0.0000 % ✅ (sources.yml L167).
+- v2's index history comes from v1's `bronze_index` table, one series spliced from two origins: legacy rows with no source id (VNINDEX from 2004-01-05) to 2026-03-06, then `vnstock_quote` from 2026-03-09 ✅ `measured on v1, 2026-10-15`, 22,211 rows over 5 codes. It is used as one series until a single-source reload is possible; a level break at the seam has not been checked ❓.
 
 ## 6. Official and commercial sources
 

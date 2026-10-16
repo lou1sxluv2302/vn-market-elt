@@ -20,6 +20,21 @@
             organ_name varchar, product_grp_id varchar, icb_code2 varchar,
             _source_sha256 varchar, _loaded_at timestamptz
         );
+        {%- for prefix, table in [('fr', 'foreign_trade_daily'), ('prop', 'prop_trade_daily')] %}
+        create table if not exists raw_vnstock.{{ table }} (
+            symbol varchar, session_date date,
+            {%- for side in ['buy', 'sell', 'net'] %}{% for unit in ['vol', 'val'] %}{% for src in ['matched', 'deal', 'total'] %}
+            {{ prefix }}_{{ side }}_{{ unit }}_{{ src }} double,
+            {%- endfor %}{% endfor %}{% endfor %}
+            breakdown_valid boolean, source varchar,
+            _source_sha256 varchar, _loaded_at timestamptz
+        );
+        {%- endfor %}
+        create table if not exists raw_vnstock.index_daily (
+            index_code varchar, session_date date,
+            open double, high double, low double, close double, volume bigint, _source_id varchar,
+            _source_sha256 varchar, _loaded_at timestamptz
+        );
     {% endset %}
     {% do run_query(ddl) %}
     {{ log("CI source tables created", info=True) }}

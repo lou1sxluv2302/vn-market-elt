@@ -29,6 +29,10 @@ _Avoid_: stock, symbol (when the stable identity is meant)
 **Index** (`index`, `index_code`) · _chỉ số_:
 A published market index such as VN-Index, VN30 or HNX-Index.
 
+**Index points** (`_points`, e.g. `close_points`) · _điểm chỉ số_:
+An index level in the index's own points, never VND.
+_Avoid_: `_vnd` on an index column
+
 **Session** (`session`, `trade_date`) · _phiên giao dịch_:
 One trading day, identified by its Vietnam-time date.
 _Avoid_: day, bar
@@ -292,6 +296,10 @@ The sum of the last four published quarters.
 **Pull** (`_ingest_partition`, `_source_file`) · _lượt kéo dữ liệu_:
 One retrieval of data from a source; raw keeps every pull, so a vendor's later revision of the same row is visible.
 _Avoid_: batch (a collector's 60-second file), version
+
+**Snapshot** (`_source_sha256`, `_loaded_at`) · _ảnh chụp_:
+A whole copy of a source that is rewritten rather than appended (a reference list, a flow file, v1's index table), loaded again only when its content hash changes; staging reads the newest.
+_Avoid_: pull (one retrieval of a logged source), version
 
 **Latest-wins** (rule, no column) · _bản mới nhất thắng_:
 The deduplication that keeps, per key, the row from the newest pull; applied in staging, never in raw.

@@ -28,8 +28,16 @@ python -m vnmarket.el.load_v1_history --apply
 The first command is a dry run: it checks every file against v1's schema and
 BigQuery's column-name rules and prints counts. The second loads only the first
 pull - a small smoke load that meets BigQuery's own rules early. The third loads
-the rest (files already loaded are skipped). It ends with two lines that must both be ✅: the
-rows of every newly loaded file counted in BigQuery, and v1's files unchanged.
+the rest (files already loaded are skipped). It ends with three lines that must all be ✅:
+the rows of every expected file counted in BigQuery, every snapshot table holding its
+current content's rows, and v1's files unchanged.
+
+The same run loads the snapshots: the reference lists, the daily foreign and proprietary
+flow files, and the index history read read-only from v1's DuckDB (v1 keeps no index
+log). A snapshot is loaded again only when its content changed. v1 rewrites the flow
+files every day, so each later run adds a full copy of them (about 1 GB for the foreign
+flow file): reload when you need newer history, not every day. If v1's daily job holds
+its DuckDB, the loader stops with "⚪ not run" before loading anything.
 
 ## Prove it
 
@@ -37,8 +45,9 @@ rows of every newly loaded file counted in BigQuery, and v1's files unchanged.
 python tools/reconcile_v1.py
 ```
 
-Four ✅ lines: raw = parquet per file · latest-wins reproduces v1 with residuals
-within the counts measured in `config/el.yml` · reference lists = parquet · v1
+Five ✅ lines: raw = parquet per file · latest-wins reproduces v1 with residuals
+within the counts measured in `config/el.yml` · reference lists = parquet · flows
+and index = v1 (newest snapshot: content hash and per-symbol signatures) · v1
 unchanged. A residual above its measured count means v1 changed: explain it
 before raising the number.
 
