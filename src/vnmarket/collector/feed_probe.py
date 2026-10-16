@@ -223,6 +223,7 @@ def self_test() -> int:
         recorder.close()
         lines = [json.loads(x) for x in path.read_text("utf-8").splitlines()]
     events = [x["event"] for x in lines if x["kind"] == "event"]
+    connection = [e for e in events if e != "stats_unavailable"]  # psutil may be absent
     messages = [x for x in lines if x["kind"] == "message"]
     stamps = [x["received_at"] for x in messages]
     checks = {
@@ -232,7 +233,7 @@ def self_test() -> int:
         and "not json at all" in [m["raw"] for m in messages],
         "a binary message is kept, decoded with a flag": any(m.get("binary") for m in messages),
         "received_at is recorded and never goes back": stamps == sorted(stamps),
-        "planted refusal, drop and reconnect are all recorded in order": events[:4]
+        "planted refusal, drop and reconnect are all recorded in order": connection[:4]
         == ["connect_failed", "connected", "disconnected", "reconnected"],
         "the run ends at its limit and says so": events[-1] == "finished" and elapsed < 4.0,
         "process RAM and CPU are sampled": any(x["kind"] == "stats" for x in lines)
