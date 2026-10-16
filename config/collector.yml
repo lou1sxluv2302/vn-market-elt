@@ -1,9 +1,18 @@
 # Stream collector settings. No constant lives in Python code (spec D-rules, rule 6).
 batch_seconds: 60            # flush one parquet batch per minute (spec §5 latency budget)
-stale_alert_minutes: 3       # healthcheck: no new message for this long during a session => alert
+stale_alert_minutes: 3       # no new batch for this long during a session => alert (S1.4, ADR-0030)
 connect_timeout_seconds: 30  # every outbound call has a timeout (rule 32)
 schedule:
   start_local: "08:55"       # Asia/Ho_Chi_Minh
   stop_local: "15:05"
   weekdays: [MON, TUE, WED, THU, FRI]
 timezone: Asia/Ho_Chi_Minh
+disconnect_timeout_seconds: 10
+reconnect_initial_seconds: 5 # back-off doubles after each failed connect, up to the max
+reconnect_max_seconds: 60
+spool_dir: data/collector/spool  # relative to the repository; git-ignored (data/)
+upload:
+  prefix: vps_stream           # gs://<raw bucket>/vps_stream/dt=.../batch=...parquet
+  poll_seconds: 15             # how often the uploader looks at the spool
+  call_timeout_seconds: 60     # each upload and each metadata read
+  drain_minutes: 10            # after --until, keep uploading what is left for this long

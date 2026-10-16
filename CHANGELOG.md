@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- S1 collector code (#36): `stream_collector.py` writes every feed message verbatim to
+  one parquet file per 60-second window in a local spool (atomic, restart-safe names,
+  back-off reconnects, confirmed holidays skipped); `uploader.py` moves the spool to the raw
+  bucket and deletes a file only when the stored object's size and CRC32C match. Extra
+  `collector`. ADR-0030 (the stale-feed alert comes from Cloud Monitoring).
 - P4 (#34): `fct_price_revision` classes every vendor history rewrite (same_close,
   rescale, noise, other; thresholds measured on prod) with unit tests, two planted faults
   and a warning on `other` above the measured count; `reconcile_v1_marts.py --log` appends

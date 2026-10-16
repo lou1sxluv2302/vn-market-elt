@@ -14,3 +14,7 @@ v1:
 el:
   marts_reader_service_account: "sa-bi-reader@<project-id>.iam.gserviceaccount.com"
   loader_service_account: "sa-loader@<project-id>.iam.gserviceaccount.com"
+collector:
+  # Off the VM only: impersonate this account to write the raw bucket (leave empty on the
+  # VM, which uses its attached service account).
+  service_account: "sa-collector@<project-id>.iam.gserviceaccount.com"
