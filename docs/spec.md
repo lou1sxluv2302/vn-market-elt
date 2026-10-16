@@ -32,7 +32,7 @@ they become the source of progress and this list is retired.
 - [x] Agent workflow skills, mattpocock/skills integration (`docs/agents/`, `CONTEXT.md`), git guardrail hook - PR #5, merged 2026-10-13
 - [x] 0.5 Repo security - pre-commit installed and green on the whole repo (secret scan, gitleaks, private keys, large files, data files, dashes, ruff); Dependabot; GitHub secret scanning and push protection on (#6)
 - [x] 0.6 Rulesets `protect-main` and `protect-release-tags`, squash-only, auto-delete branches, labels, phase milestones, PR/issue templates, CODEOWNERS (#7); status checks join the ruleset in 0.8
-- [ ] 0.7 Terraform (#14) - code, validate and plan done; left: owner applies `bootstrap` then `main`, stores the CI secrets, `infra / terraform-plan` runs green. 0.7b (VM + IAP firewall) is written and applied at S0 (ADR-0027)
+- [x] 0.7 Terraform (#14, #15) - `bootstrap` and `main` applied by the owner, CI secrets stored, `infra / terraform-plan` green and required; `marts_research` added (#28). 0.7b (VM + IAP firewall) is written and applied at S0 (ADR-0027)
 - [x] 0.8 Minimal CI - workflows `ci` and `security`, required in `protect-main`; a red PR was blocked and a planted key caught (#9). Terraform checks arrive with 0.7
 
 **Spec**
@@ -42,7 +42,7 @@ they become the source of progress and this list is retired.
 - [x] P1 history load - `raw_vnstock` holds every pull of v1's daily OHLCV (145 files to 2026-10-13) and the symbol lists; `tools/reconcile_v1.py` green on all four checks (#18)
 - [x] P2 dbt (#20) - project, keyless identity, market-rule seeds, staging, intermediate (#21); marts (calendar, securities SCD2, prices, liquidity, universe) and `tools/reconcile_v1_marts.py` green on all four checks, every difference named by its mechanism (#22)
 - [x] P3 data-quality tests (#23) - v1's checks for the layers v2 has as 66 dbt data tests; `tools/planted_faults.py` proves each can go red (32 faults, in CI); `dbt build --target prod` green 2026-10-15
-- [ ] Research track - tracked in the private repo
+- [x] Research track (private repo) - features and PANIC labels, hypotheses registered then measured once, a walk-forward test; a forward journal runs every trading day from 2026-10-16. Inputs added here: flows and index history (#27, #28), `--datasets` for the daily reload (#30)
 - [ ] S0-S3 feed probe, collector, load, hot path
 - [ ] S4, P4, P5 → `v1.0.0`
 

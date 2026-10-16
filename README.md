@@ -3,8 +3,59 @@
 **An ELT platform for Vietnamese equity market data - from the exchange feed to
 a BigQuery warehouse and a Power BI dashboard, on free-tier infrastructure.**
 
-> **Status:** foundations (phase P0). Design, decisions and domain knowledge are
-> in place; pipelines are being built. See the [changelog](CHANGELOG.md).
+> **Status:** the **cold path is built and verified** (P1-P3): 26 years of daily
+> history in BigQuery, rebuilt by dbt into point-in-time marts, reconciled row by row
+> against the previous system and guarded by data tests that are each proven able to fail.
+> The hot path (intraday feed) is next. See the [changelog](CHANGELOG.md).
+
+## What is built and how it is verified
+
+| | |
+|---|---|
+| **History in BigQuery** | dlt loads every pull of the previous system's daily OHLCV (12 M+ rows, 2 sources, kept as an append-only log), the symbol lists, foreign and proprietary flows and index history (as content-hashed snapshots); every load is counted in the destination |
+| **Point-in-time marts** | trading calendar (observed sessions, then weekdays minus seeded holidays), securities with exchange history (SCD2), clean daily prices with tick and band of the day, liquidity and universe, flows with the match / put-through split only where it adds up, index levels |
+| **Reconciled, not just tested** | raw equals the source files per file (counts and date-weighted checksums); marts reproduce the previous system row by row, and every difference is named by its mechanism, not a tolerance |
+| **Tests that can fail** | 100+ dbt data tests and unit tests with exact known answers; a planted-fault matrix on a synthetic DuckDB warehouse turns each non-built-in test red with a fault of its own mechanism (37 faults), in CI |
+| **No look-ahead** | features downstream are rebuilt with every input cut at a date and must not change |
+| **Keyless and cheap** | impersonation and Workload Identity Federation only; BigQuery and GCS free tiers |
+
+```mermaid
+flowchart LR
+  subgraph raw[raw_vnstock - append-only]
+    ohlcv[ohlcv_daily]
+    refs[ref_* lists]
+    flows[foreign / prop flow snapshots]
+    idx[index_daily]
+  end
+  subgraph stg[staging]
+    s_ohlcv[stg ohlcv: latest-wins per source]
+    s_sym[stg symbols]
+    s_flow[stg flows: integer VND, by trade type]
+    s_idx[stg index]
+  end
+  seeds[(seeds: tick size, price band, holidays, exchange moves)]
+  subgraph int[intermediate]
+    chosen[chosen source: clean primary first]
+    flagged[flags: stale, bad rows]
+  end
+  subgraph marts[marts_daily]
+    cal[dim_trading_calendar]
+    sec[dim_security SCD2]
+    price[fct_price_daily]
+    liq[fct_liquidity_daily]
+    uni[fct_universe_daily]
+    fflow[fct_foreign / prop_flow_daily]
+    fidx[fct_index_daily]
+  end
+  ohlcv --> s_ohlcv --> chosen --> flagged
+  refs --> s_sym --> sec
+  flows --> s_flow --> fflow
+  idx --> s_idx --> fidx
+  flagged --> cal & price & sec
+  seeds --> cal & price & sec
+  cal --> price --> liq --> uni
+  sec --> price
+```
 
 ## What it does (by design)
 
@@ -80,7 +131,7 @@ tests/         synthetic fixtures only
 | Release | Scope |
 |---|---|
 | `v0.1.0` | Foundations: repository security, CI, infrastructure as code |
-| `v0.2.0` | Cold path: history in BigQuery, dbt models, data-quality tests |
+| `v0.2.0` ✅ | Cold path: history in BigQuery, dbt models, data-quality tests |
 | `v0.3.0` - `v0.4.0` | Hot path: feed collector, streaming load, intraday dashboard |
 | `v1.0.0` | Incremental loads, full security review, demo-ready |
 | `v1.1`+ | Snowflake · Athena · Databricks comparison |
@@ -94,6 +145,8 @@ Progress is tracked in [milestones](../../milestones).
 - [Engineering rules](docs/engineering-rules.md)
 - [Project language: Vietnamese market terms](CONTEXT.md)
 - [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md)
+
+The marts also feed a separate, private research project; nothing from it is published here.
 
 ## Data notice
 
