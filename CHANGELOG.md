@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `load_v1_history --datasets` loads a chosen subset (default: all; unknown names refused)
+  and counts only what it loaded; `tools/prune_flow_snapshots.py` (dry run by default)
+  removes flow snapshots older than the newest, the one exception to append-only raw (#29).
 - Flow and index marts (#26): `fct_foreign_flow_daily`, `fct_prop_flow_daily` (totals
   always; the match / put-through split only where match + put-through = total on every
   side and unit, and for foreign flow from 2020-01-02; `prop_data_available`) and

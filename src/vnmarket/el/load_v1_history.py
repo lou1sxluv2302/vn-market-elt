@@ -34,6 +34,7 @@ count differs · 2 = usage, config or input error.
 Usage:
     python -m vnmarket.el.load_v1_history                      # dry run: counts only
     python -m vnmarket.el.load_v1_history --apply [--until-ingest-date 2026-10-12]
+    python -m vnmarket.el.load_v1_history --apply --datasets ohlcv,reference,index
     python -m vnmarket.el.load_v1_history --self-test
 """
 
@@ -115,11 +116,29 @@ def check_schema(item: OhlcvFile) -> int:
 
 
 OHLCV_LINEAGE = ["_source_file", "_ingest_partition"]
+DATASETS = frozenset({"ohlcv", "reference", "flows", "index"})
+
+
+def parse_datasets(text: str) -> frozenset[str]:
+    """`ohlcv,reference,index` -> those names; an unknown name is an error (exit 2)."""
+    names = frozenset(n.strip() for n in text.split(",") if n.strip())
+    unknown = names - DATASETS
+    if not names or unknown:
+        raise argparse.ArgumentTypeError(
+            f"choose from {sorted(DATASETS)}; unknown: {sorted(unknown) or 'none given'}"
+        )
+    return names
+
+
 REFERENCE_LINEAGE = ["_source_sha256", "_loaded_at"]
 
 
 def reserved_names(
-    bronze_dir: Path, cfg: dict, files: list[OhlcvFile], index_table: pa.Table | None = None
+    bronze_dir: Path,
+    cfg: dict,
+    files: list[OhlcvFile],
+    index_table: pa.Table | None = None,
+    datasets: frozenset[str] = DATASETS,
 ) -> list[str]:
     """Columns whose name BigQuery refuses (reserved prefixes, case-insensitive). A local
     DuckDB destination accepts them, so only this check stops them before the cloud load."""
@@ -128,10 +147,12 @@ def reserved_names(
     for item in files:
         tables.setdefault(cfg["ohlcv"]["table"], []).extend(pq.read_schema(item.path).names)
     tables.setdefault(cfg["ohlcv"]["table"], []).extend(OHLCV_LINEAGE)
-    for name, path in reference_files(bronze_dir, cfg).items():
-        tables[name] = pq.read_schema(path).names + REFERENCE_LINEAGE
-    for name, path in flow_files(bronze_dir, cfg).items():
-        tables[name] = pq.read_schema(path).names + REFERENCE_LINEAGE
+    if "reference" in datasets:
+        for name, path in reference_files(bronze_dir, cfg).items():
+            tables[name] = pq.read_schema(path).names + REFERENCE_LINEAGE
+    if "flows" in datasets:
+        for name, path in flow_files(bronze_dir, cfg).items():
+            tables[name] = pq.read_schema(path).names + REFERENCE_LINEAGE
     if index_table is not None:
         tables[cfg["index"]["table"]] = index_table.schema.names + REFERENCE_LINEAGE
     return sorted(
@@ -240,27 +261,40 @@ class Snapshot:
     read: Callable[[], pa.Table]  # called only when the snapshot is new
 
 
-def snapshots(bronze_dir: Path, cfg: dict, index_table: pa.Table | None) -> list[Snapshot]:
-    """Every snapshot table with the content it should hold now."""
-    found = [
-        Snapshot(
-            f"{cfg['reference']['table_prefix']}{name}",
-            sha256_of(path),
-            pq.ParquetFile(path).metadata.num_rows,
-            lambda path=path: loadable(pq.read_table(path)),
-        )
-        for name, path in reference_files(bronze_dir, cfg).items()
-    ]
-    found += [
-        Snapshot(
-            table,
-            sha256_of(path),
-            pq.ParquetFile(path).metadata.num_rows,
-            lambda path=path: loadable(pq.read_table(path)),
-        )
-        for table, path in flow_files(bronze_dir, cfg).items()
-    ]
-    if index_table is not None:
+def snapshots(
+    bronze_dir: Path,
+    cfg: dict,
+    index_table: pa.Table | None,
+    datasets: frozenset[str] = DATASETS,
+) -> list[Snapshot]:
+    """Every snapshot table of the chosen datasets with the content it should hold now."""
+    found = (
+        []
+        if "reference" not in datasets
+        else [
+            Snapshot(
+                f"{cfg['reference']['table_prefix']}{name}",
+                sha256_of(path),
+                pq.ParquetFile(path).metadata.num_rows,
+                lambda path=path: loadable(pq.read_table(path)),
+            )
+            for name, path in reference_files(bronze_dir, cfg).items()
+        ]
+    )
+    found += (
+        []
+        if "flows" not in datasets
+        else [
+            Snapshot(
+                table,
+                sha256_of(path),
+                pq.ParquetFile(path).metadata.num_rows,
+                lambda path=path: loadable(pq.read_table(path)),
+            )
+            for table, path in flow_files(bronze_dir, cfg).items()
+        ]
+    )
+    if index_table is not None and "index" in datasets:
         found.append(
             Snapshot(
                 cfg["index"]["table"],
@@ -341,7 +375,7 @@ def build_source(
             partition=PartitionTransformation("DATE_TRUNC({column_name}, MONTH)", column),
             cluster=cfg["ohlcv"]["cluster_by"],
         )
-        for table in cfg["flows"]["files"].values():
+        for table in [t for t in cfg["flows"]["files"].values() if t in by_table]:
             bigquery_adapter(
                 by_table[table],
                 partition=PartitionTransformation(
@@ -364,18 +398,20 @@ def load(
     until: dt.date | None,
     bigquery: bool,
     index_table: pa.Table | None = None,
+    datasets: frozenset[str] = DATASETS,
 ) -> int:
-    """Run the pipeline, then count every expected file and snapshot in the destination - not
-    only new ones: dlt's local state can claim a load the destination never got."""
+    """Run the pipeline for the chosen datasets, then count every expected file and snapshot
+    of them in the destination - not only new ones: dlt's local state can claim a load the
+    destination never got."""
     from dlt.destinations.exceptions import DatabaseUndefinedRelation
     from dlt.pipeline.exceptions import PipelineStepFailed
 
-    files = ohlcv_files(bronze_dir, cfg, until)
+    files = ohlcv_files(bronze_dir, cfg, until) if "ohlcv" in datasets else []
     expected = {item.relative: check_schema(item) for item in files}  # refuse before loading
-    refused = reserved_names(bronze_dir, cfg, files, index_table)
+    refused = reserved_names(bronze_dir, cfg, files, index_table, datasets)
     if refused:
         raise InputError(f"column names BigQuery refuses: {refused}")
-    current = snapshots(bronze_dir, cfg, index_table)
+    current = snapshots(bronze_dir, cfg, index_table, datasets)
     before = tree_fingerprint([bronze_dir])
     skipped_empty: list[str] = []
     try:
@@ -455,7 +491,12 @@ def dry_run(
 
 
 def apply(
-    bronze_dir: Path, cfg: dict, env: dict, until: dt.date | None, index_table: pa.Table
+    bronze_dir: Path,
+    cfg: dict,
+    env: dict,
+    until: dt.date | None,
+    index_table: pa.Table | None,
+    datasets: frozenset[str] = DATASETS,
 ) -> int:
     import os
 
@@ -488,7 +529,7 @@ def apply(
         destination=bigquery(credentials=credentials, location=cfg["bq_location"]),
         dataset_name=cfg["dataset"],
     )
-    return load(pipeline, bronze_dir, cfg, until, bigquery=True, index_table=index_table)
+    return load(pipeline, bronze_dir, cfg, until, True, index_table, datasets)
 
 
 def self_test() -> int:
@@ -656,6 +697,33 @@ def self_test() -> int:
         )
 
     with tempfile.TemporaryDirectory() as name:
+        tmp = Path(name)
+        bronze, paths, pipeline = setup(tmp)
+        index_v1 = fx.index_table([("VNINDEX", "2026-07-31", 1300.5)])
+        subset = frozenset({"ohlcv", "reference", "index"})
+        subset_code = load(pipeline, bronze, cfg, None, False, index_v1, subset)
+        with duckdb.connect(str(tmp / "dest.duckdb"), read_only=True) as con:
+            tables = {
+                r[0]
+                for r in con.execute(
+                    "select table_name from information_schema.tables where table_schema = 'raw'"
+                ).fetchall()
+            }
+        checks["a subset (no flows) loads and counts only what it chose"] = (
+            subset_code == 0
+            and cfg["index"]["table"] in tables
+            and not any(t in tables for t in cfg["flows"]["files"].values())
+        )
+        checks["an unknown dataset name is refused"] = (
+            subprocess.run(  # noqa: S603
+                [sys.executable, "-m", "vnmarket.el.load_v1_history", "--datasets", "ohlcv,bogus"],
+                capture_output=True,
+                timeout=120,
+            ).returncode
+            == 2
+        )
+
+    with tempfile.TemporaryDirectory() as name:
         # read_index: sorted by key and read-only; the hash ignores insertion order.
         db = Path(name) / "v1.duckdb"
         with duckdb.connect(str(db)) as con:
@@ -727,6 +795,12 @@ def main() -> int:
         type=dt.date.fromisoformat,
         help="load partitions up to this ingest date (YYYY-MM-DD)",
     )
+    parser.add_argument(
+        "--datasets",
+        type=parse_datasets,
+        default=DATASETS,
+        help=f"comma-separated subset of {sorted(DATASETS)} (default: all)",
+    )
     parser.add_argument("--self-test", action="store_true", help="run offline known-answer tests")
     args = parser.parse_args()  # rejects unknown arguments with exit code 2
     if args.self_test:
@@ -736,9 +810,11 @@ def main() -> int:
         env = load_env()
         bronze_dir = Path(env["v1"]["bronze_dir"])
         # Read once, read-only; v1's daily job holds the file 15:00-16:00 (runbook).
-        index_table = read_index(Path(env["v1"]["duckdb_path"]), cfg)
+        index_table = (
+            read_index(Path(env["v1"]["duckdb_path"]), cfg) if "index" in args.datasets else None
+        )
         if args.apply:
-            return apply(bronze_dir, cfg, env, args.until_ingest_date, index_table)
+            return apply(bronze_dir, cfg, env, args.until_ingest_date, index_table, args.datasets)
         return dry_run(bronze_dir, cfg, args.until_ingest_date, index_table)
     except (FileNotFoundError, KeyError, InputError) as exc:
         print(f"⚪ not run: {exc}", file=sys.stderr)

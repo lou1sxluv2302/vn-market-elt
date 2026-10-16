@@ -76,3 +76,20 @@ been written; the local folder claimed all 145 files. Fixed in the loader
 The second run that day hit BigQuery's reserved column prefixes (`_FILE_`): the
 lineage columns were renamed `_source_file` and `_source_sha256`, and the loader
 now checks every column name against `bigquery_reserved_prefixes` before loading.
+
+## Daily and monthly reloads (R3)
+
+The research journal reloads from v1 every weekday after v1's job, without the flow files
+(each reload of them adds a full ~1 GB snapshot):
+
+```bash
+python -m vnmarket.el.load_v1_history --apply --datasets ohlcv,reference,index
+```
+
+Once a month the flows are reloaded too (no `--datasets`), then the older flow snapshots are
+removed - the one exception to raw being append-only, limited to the flow tables:
+
+```bash
+python tools/prune_flow_snapshots.py           # dry run: lists what would go
+python tools/prune_flow_snapshots.py --apply
+```
