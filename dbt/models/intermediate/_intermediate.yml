@@ -15,6 +15,11 @@ models:
           arguments:
             columns: [symbol, trade_date]
 
+  - name: int_prices__revisions
+    description: >
+      Raw OHLCV rows that also exist in an earlier pull of the same (source, symbol, date),
+      next to the version they replaced; unchanged rows included (P4, Q1).
+
 unit_tests:
   - name: primary_source_wins_when_its_name_sorts_last
     description: >
@@ -131,3 +136,26 @@ unit_tests:
         - {symbol: LHI, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: true, is_bad_known_date: false, is_open_outside_range: true}
         - {symbol: OPN, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: false, is_open_outside_range: true}
         - {symbol: BAD, is_bad_null: false, is_bad_nonpositive: false, is_bad_ohlc: false, is_bad_known_date: true, is_open_outside_range: false}
+
+  - name: revisions_compare_each_pull_with_the_one_before
+    description: >
+      Three pulls of one key: the second changed only the volume, the third the close, each
+      against the pull just before it (a comparison with the first pull would call the
+      third's volume changed too). A key pulled once has nothing to compare. Pulls are
+      ordered by _ingested_at, not by file name.
+    model: int_prices__revisions
+    given:
+      - input: source('vnstock', 'ohlcv_daily')
+        rows:
+          - {_source_id: p, symbol: AAA, session_date: 2026-07-31, open_vnd: 100, high_vnd: 100, low_vnd: 100, close_vnd: 100, volume: 5, _ingested_at: "2026-08-03 09:00:00+00", _ingest_partition: 2026-08-03, _source_file: z}
+          - {_source_id: p, symbol: AAA, session_date: 2026-07-31, open_vnd: 100, high_vnd: 100, low_vnd: 100, close_vnd: 100, volume: 7, _ingested_at: "2026-08-04 09:00:00+00", _ingest_partition: 2026-08-04, _source_file: y}
+          - {_source_id: p, symbol: AAA, session_date: 2026-07-31, open_vnd: 100, high_vnd: 100, low_vnd: 100, close_vnd: 90, volume: 7, _ingested_at: "2026-08-05 09:00:00+00", _ingest_partition: 2026-08-05, _source_file: x}
+          - {_source_id: p, symbol: AAA, session_date: 2026-07-30, open_vnd: 80, high_vnd: 80, low_vnd: 80, close_vnd: 80, volume: 1, _ingested_at: "2026-08-04 09:00:00+00", _ingest_partition: 2026-08-04, _source_file: y}
+          - {_source_id: p, symbol: BBB, session_date: 2026-07-31, open_vnd: 50, high_vnd: 50, low_vnd: 50, close_vnd: 50, volume: 1, _ingested_at: "2026-08-03 09:00:00+00", _ingest_partition: 2026-08-03, _source_file: z}
+          - {_source_id: p, symbol: BBB, session_date: 2026-07-31, open_vnd: 50, high_vnd: 50, low_vnd: 50, close_vnd: 50, volume: 1, _ingested_at: "2026-08-04 09:00:00+00", _ingest_partition: 2026-08-04, _source_file: y}
+    expect:
+      rows:
+        - {symbol: AAA, trade_date: 2026-07-31, _source_file: y, close_vnd: 100, old_close_vnd: 100, is_close_changed: false, is_changed: true}
+        - {symbol: AAA, trade_date: 2026-07-31, _source_file: x, close_vnd: 90, old_close_vnd: 100, is_close_changed: true, is_changed: true}
+        - {symbol: BBB, trade_date: 2026-07-31, _source_file: y, close_vnd: 50, old_close_vnd: 50, is_close_changed: false, is_changed: false}
+

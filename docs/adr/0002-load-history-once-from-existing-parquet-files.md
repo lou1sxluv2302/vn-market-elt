@@ -1,6 +1,6 @@
 # ADR-0002: Load history once from existing parquet files
 
-- Status: Accepted
+- Status: Accepted; amended by [ADR-0029](0029-increments-from-v1-parquet-and-vendor-rewrites-classified.md) (increments from v1's parquet for now)
 - Date: 2026-10-06
 - Spec: D2
 

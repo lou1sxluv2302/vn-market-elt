@@ -71,6 +71,18 @@ vars:
   # "Today" for the next-year holiday test; null means the warehouse's date.
   dq_holiday_check_date: null
 
+  # Vendor history rewrites (P4, Q1; fct_price_revision). Measured on prod raw 2026-10-16,
+  # 1,357 rewrites from 47 pulls since 2026-08-03: clean corporate-action rescales cover the
+  # whole history up to their last changed date (363 of 365 moves above 0.5% cover >= 99%)
+  # and deviate at most 14.6 VND from one ratio - both versions sit on the vendor's 10-VND
+  # grid, so two grid steps is the rounding allowance; the odd ones deviate by 380-1,912 VND.
+  # The noise bound separates the 0.1% flip-flops (TDM, TA9, HAT, HMH) from real moves.
+  # With these: 970 same_close, 357 rescale, 8 noise, 10 other.
+  revision_rescale_min_coverage: 0.99
+  revision_rescale_max_deviation_vnd: 20
+  revision_noise_max_move: 0.005
+  revision_other_ceiling: 10   # warn above it: a new kind of rewrite to look at
+
 models:
   vnmarket:
     staging:
