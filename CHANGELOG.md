@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- S0 feed probe (#32): `src/vnmarket/collector/feed_probe.py` records every feed message
+  verbatim with `received_at`, connection events and RAM/CPU, under time limits, by path
+  under the interpreter that holds the licensed feed library; `feed_report.py` aggregates
+  a run (counts, sizes, field names per type, no values). Runbook `s0-feed-probe.md`.
 - `load_v1_history --datasets` loads a chosen subset (default: all; unknown names refused)
   and counts only what it loaded; `tools/prune_flow_snapshots.py` (dry run by default)
   removes flow snapshots older than the newest, the one exception to append-only raw (#29).
