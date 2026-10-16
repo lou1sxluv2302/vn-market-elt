@@ -13,7 +13,7 @@ dependencies = [
 # the collector isolates them behind an interface (spec §14.7).
 dev = ["ruff==0.17.0", "pre-commit==4.6.2", "pip-audit==2.10.1"]
 # Extract-load (P1 history, later daily pulls); CI tests it against a local DuckDB destination.
-el = ["dlt[bigquery,duckdb]==1.30.0"]
+el = ["dlt[bigquery,duckdb]==1.31.0"]
 # Transformations (P2 on); dbt-duckdb runs the unit tests in CI without a warehouse.
 dbt = ["dbt-core==1.12.5", "dbt-bigquery==1.12.1", "dbt-duckdb==1.11.0"]
 # Stream collector (S1). The licensed feed library is installed separately on the machine
