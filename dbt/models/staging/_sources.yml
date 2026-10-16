@@ -20,7 +20,25 @@ sources:
         description: >
           Snapshots of v1's daily foreign flow file (v1 rewrites it whole every day), one per
           content (`_source_sha256`); partitioned by month of session_date.
+        columns:
+          - name: _source_sha256
+            data_tests: [not_null]
+          - name: _loaded_at
+            data_tests: [not_null]
       - name: prop_trade_daily
         description: Snapshots of v1's daily proprietary flow file, as foreign_trade_daily.
+        columns:
+          - name: _source_sha256
+            data_tests: [not_null]
+          - name: _loaded_at
+            data_tests: [not_null]
       - name: index_daily
-        description: Snapshots of v1's index table (bronze_index), read read-only from its DuckDB.
+        description: >
+          Snapshots of v1's index table (bronze_index), read read-only from its DuckDB. One
+          series spliced in v1: legacy rows without a source id to 2026-03-06, vnstock_quote
+          rows from 2026-03-09 (known limitation, data-sources.md).
+        columns:
+          - name: _source_sha256
+            data_tests: [not_null]
+          - name: _loaded_at
+            data_tests: [not_null]

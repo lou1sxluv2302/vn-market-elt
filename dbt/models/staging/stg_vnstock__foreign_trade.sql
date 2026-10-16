@@ -18,7 +18,7 @@ select
     cast(round(fr_{{ side }}_val_{{ src }}) as {{ dbt.type_bigint() }}) as foreign_{{ side }}_{{ kind }}_value_vnd,
     {%- endfor %}
     {%- endfor %}
-    breakdown_valid as source_is_breakdown_valid,
+    breakdown_valid as is_source_breakdown_valid,
     _source_sha256,
     _loaded_at
 from newest

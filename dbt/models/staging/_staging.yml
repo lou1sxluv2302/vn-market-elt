@@ -20,6 +20,11 @@ models:
 
   - name: stg_vnstock__foreign_trade
     description: Newest snapshot of the foreign flow file; integer VND and shares by trade type.
+    columns:
+      - name: symbol
+        data_tests: [not_null]
+      - name: trade_date
+        data_tests: [not_null]
     data_tests:
       - unique_combination:
           arguments:
@@ -28,6 +33,11 @@ models:
 
   - name: stg_vnstock__prop_trade
     description: Newest snapshot of the proprietary flow file; best-effort, from 2020.
+    columns:
+      - name: symbol
+        data_tests: [not_null]
+      - name: trade_date
+        data_tests: [not_null]
     data_tests:
       - unique_combination:
           arguments:
@@ -36,6 +46,11 @@ models:
 
   - name: stg_vnstock__index_daily
     description: Newest snapshot of the index table, in index points.
+    columns:
+      - name: index_code
+        data_tests: [not_null]
+      - name: trade_date
+        data_tests: [not_null]
     data_tests:
       - unique_combination:
           arguments:

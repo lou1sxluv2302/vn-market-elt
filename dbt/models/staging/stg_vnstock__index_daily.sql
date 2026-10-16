@@ -15,7 +15,7 @@ select
     low as low_points,
     close as close_points,
     volume as source_volume_qty,
-    _source_id as source_id,
+    _source_id,
     _source_sha256,
     _loaded_at
 from newest

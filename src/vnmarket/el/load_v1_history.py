@@ -45,7 +45,7 @@ import hashlib
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -237,7 +237,7 @@ class Snapshot:
     table: str
     digest: str
     rows: int
-    read: Any  # () -> pa.Table, called only when the snapshot is new
+    read: Callable[[], pa.Table]  # called only when the snapshot is new
 
 
 def snapshots(bronze_dir: Path, cfg: dict, index_table: pa.Table | None) -> list[Snapshot]:
@@ -367,6 +367,7 @@ def load(
 ) -> int:
     """Run the pipeline, then count every expected file and snapshot in the destination - not
     only new ones: dlt's local state can claim a load the destination never got."""
+    from dlt.destinations.exceptions import DatabaseUndefinedRelation
     from dlt.pipeline.exceptions import PipelineStepFailed
 
     files = ohlcv_files(bronze_dir, cfg, until)
@@ -404,7 +405,7 @@ def load(
                 got = client.execute_sql(
                     f"select count(*) from {qualified} where _source_sha256 = '{snap.digest}'"  # noqa: S608
                 )[0][0]
-            except Exception:  # noqa: BLE001 - a missing table is a missing snapshot
+            except DatabaseUndefinedRelation:  # a missing table is a missing snapshot
                 got = None
             if got != snap.rows:
                 snapshot_wrong.append(snap.table)

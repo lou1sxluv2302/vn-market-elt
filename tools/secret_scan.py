@@ -11,6 +11,7 @@ Usage:
     python tools/secret_scan.py [--repo PATH]
     python tools/secret_scan.py --self-test
 """
+
 from __future__ import annotations
 
 import argparse
@@ -77,7 +78,9 @@ def git(repo: Path, *args: str) -> str:
     """Run git in `repo` with a timeout; the only process this module starts."""
     result = subprocess.run(  # noqa: S603 - fixed argv, no shell; repo paths come from our own CLI
         ["git", "-C", str(repo), *args],  # noqa: S607 - git is resolved from PATH by design
-        capture_output=True, check=True, timeout=GIT_TIMEOUT_SECONDS,
+        capture_output=True,
+        check=True,
+        timeout=GIT_TIMEOUT_SECONDS,
     )
     return result.stdout.decode("utf-8", "replace")
 
@@ -197,7 +200,8 @@ def self_test() -> int:
         "finding is redacted": all(fake_key not in s for s in planted_secrets),
         "an unknown argument is rejected with exit 2": subprocess.run(  # noqa: S603
             [sys.executable, __file__, "--bogus"], capture_output=True, timeout=60
-        ).returncode == 2,
+        ).returncode
+        == 2,
     }
     for name, ok in checks.items():
         print(f"{'✅' if ok else '🔴'} {name}")

@@ -138,7 +138,7 @@ def snapshot_signature(
     return ", ".join(parts)
 
 
-def compare_signatures(a: pa.Table, b: pa.Table, tolerance: float = 1e-9) -> list[str]:
+def compare_signatures(a: pa.Table, b: pa.Table, tolerance: float) -> list[str]:
     """Keys whose signatures differ (`a` raw, `b` v1): counts and dates exactly, sums to a
     relative tolerance (floating-point sums depend on the order the engine adds them in)."""
     left = {r["k"]: r for r in a.to_pylist()}
@@ -366,7 +366,13 @@ def run() -> int:
     snapshot_ok = True
     duck = duckdb.connect()
     sources = [
-        (table, path, sha256_of(path), "symbol", f"read_parquet('{path.as_posix()}')")
+        (
+            table,
+            path,
+            sha256_of(path),
+            "symbol",
+            "read_parquet('{}')".format(path.as_posix().replace("'", "''")),
+        )
         for table, path in flow_files(bronze, cfg).items()
     ]
     index_v1 = read_index(duck_path, cfg)
@@ -391,11 +397,12 @@ def run() -> int:
             f"select {snapshot_signature('bigquery', key, numeric, modulus)} from {dest} "
             f"where _source_sha256 = '{digest}' group by 1"
         )
-        differ = compare_signatures(raw_sig, v1_sig)
+        differ = compare_signatures(raw_sig, v1_sig, rec["signature_tolerance"])
         for line in differ[:10]:
             print(f"     {table} {line}")
         print(f"     {table}: {len(v1_sig)} keys, {len(numeric)} numeric columns compared")
         snapshot_ok = snapshot_ok and not differ
+    duck.close()
     verdicts["flows and index = v1 (newest snapshot: hash and per-key signatures)"] = snapshot_ok
 
     # 5. v1 untouched
@@ -564,16 +571,16 @@ def self_test() -> int:
 
     reordered = sig_of(flows_v1.take([2, 1, 0]))
     checks["snapshot signatures: same rows in another order give no difference"] = (
-        compare_signatures(sig_of(flows_v1), reordered) == []
+        compare_signatures(sig_of(flows_v1), reordered, 1e-9) == []
     )
     checks["planted value change in a snapshot is caught"] = (
-        len(compare_signatures(sig_of(flows_v1), sig_of(with_net([0.1, 0.2, 5.5])))) == 1
+        len(compare_signatures(sig_of(flows_v1), sig_of(with_net([0.1, 0.2, 5.5])), 1e-9)) == 1
     )
     checks["planted swap of two dates in a snapshot is caught"] = (
-        len(compare_signatures(sig_of(flows_v1), sig_of(with_net([0.2, 0.1, 5.0])))) == 1
+        len(compare_signatures(sig_of(flows_v1), sig_of(with_net([0.2, 0.1, 5.0])), 1e-9)) == 1
     )
     checks["planted symbol missing from a snapshot is caught"] = compare_signatures(
-        sig_of(flows_v1.slice(0, 2)), sig_of(flows_v1)
+        sig_of(flows_v1.slice(0, 2)), sig_of(flows_v1), 1e-9
     ) == ["BBB: only in v1"]
 
     checks["an unknown argument is rejected with exit 2"] = (
