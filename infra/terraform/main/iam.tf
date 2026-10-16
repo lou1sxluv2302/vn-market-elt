@@ -24,6 +24,14 @@ resource "google_service_account_iam_member" "owner_impersonates_loader" {
   member             = "user:${var.owner_email}"
 }
 
+# Off the VM (S2.4, or local collection if the S0 gate says so) the uploader runs on the
+# owner's machine as sa-collector, the same way.
+resource "google_service_account_iam_member" "owner_impersonates_collector" {
+  service_account_id = google_service_account.this["sa-collector"].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "user:${var.owner_email}"
+}
+
 # dbt runs on the owner's machine as sa-dbt, the same way (P2).
 resource "google_service_account_iam_member" "owner_impersonates_dbt" {
   service_account_id = google_service_account.this["sa-dbt"].name

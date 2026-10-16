@@ -249,8 +249,8 @@ decide whether to upsize (leaves the free tier).
 
 ### S2 - Load into the warehouse (~4 h, part of `v0.4.0`)
 
-After each batch: load job GCS → `raw_vps_stream.messages`, partitioned by `dt`.
-**Done when:** message counts in BigQuery equal those in parquet, **per batch**.
+After each batch: a load job appends it to `raw_vps_stream.messages` (partitioned by day on `received_at`) from the local file already verified against its GCS copy; job ids make each load exactly once (ADR-0031).
+**Done when:** message counts in BigQuery equal those in parquet, **per batch** (`tools/reconcile_stream.py`).
 
 ### S3 - Hot path: dbt views + Power BI (~7 h, tag `v0.4.0`)
 

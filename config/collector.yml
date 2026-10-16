@@ -16,3 +16,4 @@ upload:
   poll_seconds: 15             # how often the uploader looks at the spool
   call_timeout_seconds: 60     # each upload and each metadata read
   drain_minutes: 10            # after --until, keep uploading what is left for this long
+  load_table: raw_vps_stream.messages  # S2: each batch appended by a load job (ADR-0031)

@@ -1,8 +1,9 @@
 # Runbook - S1 collector
 
 Two processes (ADR-0030): `stream_collector` writes one parquet file per 60-second window
-into a local spool; `uploader` moves the spool to the raw bucket, deleting a file only when
-the stored object's size and CRC32C match. Deployment (systemd on the VM, or a local
+into a local spool; `uploader` archives each file in the raw bucket (size and CRC32C
+checked) and appends it to `raw_vps_stream.messages` (ADR-0031), deleting it only when the
+load job's rows equal the file's. Deployment (systemd on the VM, or a local
 service) follows the S0 gate; until then both run by hand.
 
 ## Run by hand
@@ -29,6 +30,15 @@ Off the VM the uploader impersonates `collector.service_account` (config/env/pro
 the owner needs Token Creator on that account. Exit 1 means files are left in the spool
 or moved to `data/collector/conflict/` - read the `upload_failed`, `verify_failed` and
 `batch_conflict` lines; nothing there is ever deleted automatically.
+
+## After the session
+
+```powershell
+.\.venv\Scripts\python.exe tools\reconcile_stream.py --date 2026-10-19
+```
+
+Every batch's count in GCS (object metadata) against BigQuery; exit 0 only when all are
+equal (spec S2 "done when").
 
 ## Checked
 
