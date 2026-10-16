@@ -104,6 +104,13 @@ models:
         data_tests: [not_null]
       - name: trade_date
         data_tests: [not_null]
+      - name: is_breakdown_valid
+        description: >
+          True when match + put-through = total on every side and unit (and, for foreign
+          flow, from 2020-01-02); false otherwise, also when an input is NULL. Use this one.
+        data_tests: [not_null]
+      - name: is_source_breakdown_valid
+        description: v1's own flag, kept for audit; it passed rows this model rejects (flows.md §2.3).
     data_tests:
       - unique_combination:
           arguments:
@@ -128,6 +135,13 @@ models:
         data_tests: [not_null]
       - name: trade_date
         data_tests: [not_null]
+      - name: is_breakdown_valid
+        description: >
+          True when match + put-through = total on every side and unit (and, for foreign
+          flow, from 2020-01-02); false otherwise, also when an input is NULL. Use this one.
+        data_tests: [not_null]
+      - name: is_source_breakdown_valid
+        description: v1's own flag, kept for audit; it passed rows this model rejects (flows.md §2.3).
     data_tests:
       - unique_combination:
           arguments:
