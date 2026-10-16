@@ -89,6 +89,7 @@ FIXTURE_VARS = {
     ],
     "dq_falling_market_symbols_more_than": 3,
     "dq_fallback_rows_ceiling": 4,  # S03 x 3 (primary missing) + S04 x 1 (primary broken)
+    "revision_other_ceiling": 0,  # the fixture's one rewrite (S09) is a rescale
 }
 
 
@@ -355,6 +356,32 @@ def add_rows(extra: Callable[[], Rows]) -> Callable[[Rows], Rows]:
     return lambda rows: rows + extra()
 
 
+def earlier_pull(symbol: str, at: str, close: Callable[[dict], int]) -> Callable[[Rows], Rows]:
+    """An earlier pull of the symbol's whole primary history, its closes given by `close`."""
+    return lambda rows: (
+        rows
+        + [
+            {**r, "close_vnd": close(r), "_ingested_at": at, "_ingest_partition": at[:10]}
+            for r in rows
+            if r["symbol"] == symbol
+            and r["_source_id"] == PRIMARY
+            and r["_ingested_at"] == PULLED_AT
+        ]
+    )
+
+
+def compose(*edits: Callable[[Rows], Rows]) -> Callable[[Rows], Rows]:
+    def run(rows: Rows) -> Rows:
+        for edit in edits:
+            rows = edit(rows)
+        return rows
+
+    return run
+
+
+REWRITTEN_WINDOW = set(SESSIONS[9:15])  # sessions 10-15 of 52
+
+
 FCT = "models/marts/daily/fct_price_daily.sql"
 LIQ = "models/marts/daily/fct_liquidity_daily.sql"
 UNI = "models/marts/daily/fct_universe_daily.sql"
@@ -530,6 +557,38 @@ FAULTS = [
         "latest-wins filter lost in staging",
         fail("unique_combination_stg_vnstock__ohlcv_daily__source_id__symbol__trade_date"),
         mutants=(Mutant(STG, "where pull_rank = 1", "where pull_rank >= 1", 1),),
+    ),
+    Fault(
+        "vendor_rewrote_a_window",
+        "a pull that rewrites sessions in the middle of a history (S16 sessions 10-15 were "
+        "20% higher in the earlier pull): neither a rescale of the whole history nor noise",
+        warn("monitor_price_revisions_other"),
+        data=earlier_pull(
+            "S16",
+            OLDER_PULL_AT,
+            lambda r: (
+                r["close_vnd"] * 6 // 5 if r["session_date"] in REWRITTEN_WINDOW else r["close_vnd"]
+            ),
+        ),
+    ),
+    Fault(
+        "revision_rows_fan_out",
+        "the revision mart joined to its fit without the pull time: two rewrites of one "
+        "symbol (S17 halved twice, both clean rescales) multiply each other",
+        fail(
+            "unique_combination_fct_price_revision__source_id__symbol___ingested_at___source_file"
+        ),
+        data=compose(
+            earlier_pull("S17", "2026-02-01 09:00:00+00", lambda r: r["close_vnd"] * 4),
+            earlier_pull("S17", OLDER_PULL_AT, lambda r: r["close_vnd"] * 2),
+        ),
+        mutants=(
+            Mutant(
+                "models/marts/daily/fct_price_revision.sql",
+                "    and f._ingested_at = e._ingested_at\n",
+                "",
+            ),
+        ),
     ),
     # Defects dbt carries downstream: the echoes are named, each one explained.
     Fault(

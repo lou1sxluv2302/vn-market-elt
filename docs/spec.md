@@ -43,6 +43,7 @@ they become the source of progress and this list is retired.
 - [x] P2 dbt (#20) - project, keyless identity, market-rule seeds, staging, intermediate (#21); marts (calendar, securities SCD2, prices, liquidity, universe) and `tools/reconcile_v1_marts.py` green on all four checks, every difference named by its mechanism (#22)
 - [x] P3 data-quality tests (#23) - v1's checks for the layers v2 has as 66 dbt data tests; `tools/planted_faults.py` proves each can go red (32 faults, in CI); `dbt build --target prod` green 2026-10-15
 - [x] Research track (private repo) - features and PANIC labels, hypotheses registered then measured once, a walk-forward test; a forward journal runs every trading day from 2026-10-16. Inputs added here: flows and index history (#27, #28), `--datasets` for the daily reload (#30)
+- [ ] P4 (#34) - vendor rewrites classified (`fct_price_revision`), daily reconciliation logged; done at 10 consecutive passing sessions (ADR-0029)
 - [ ] S0-S3 feed probe, collector, load, hot path
 - [ ] S4, P4, P5 → `v1.0.0`
 
@@ -282,7 +283,7 @@ follows (D24); nothing about the hypotheses or their results is published here.
 | Phase | Work | Done when |
 |---|---|---|
 | S4 | Daily bars rebuilt from ticks vs. vnstock end-of-day OHLC - measures collector completeness | Every deviation explained |
-| P4 | Incremental load after 16:30; detect vendor history rewrites by comparing the overlap window (Q1) | 10 consecutive sessions match DuckDB |
+| P4 | Incremental load after 16:30 (from v1's parquet for now, ADR-0029); vendor history rewrites classified in `fct_price_revision` (Q1); `tools/reconcile_v1_marts.py --log` every trading day | `--streak` reaches 10 consecutive passing sessions |
 | P5 | Demo README (architecture, dashboard screenshots on **synthetic data**, dbt lineage) · CI adds `dbt build` on **DuckDB with synthetic data** · full security review (§14.8) | **`v1.0.0`: demo-ready** |
 
 ## 7. Warehouse comparison phases (after P3)
@@ -333,7 +334,7 @@ this estimate is wrong.
 
 | # | Question | Proposal | Blocks |
 |---|---|---|---|
-| Q1 | How to detect vendor history rewrites after corporate actions? | Compare the overlap window between two pulls; raw is append-only with `_ingested_at`; staging picks the latest version | P4 |
+| Q1 | How to detect vendor history rewrites after corporate actions? | **Decided (P4, ADR-0029):** every pull is compared with the one before; each rewrite is classed same_close, rescale, noise or other in `fct_price_revision`; `other` warns above the measured count | - |
 | Q2 | First cold-path scope? | **Decided (P1):** daily OHLCV + symbol reference lists loaded; security master and calendar built in dbt (P2); flows, fundamentals and index later | - |
 | Q3 | EMA and recursive indicators in dbt? | History: window-function definitions (SMA, ranges, ATR from SMA of true range); an EMA only where a consumer needs it, computed in a Python step. Intraday: incremental | P2 |
 | Q4 | DuckDB match criteria | Row count per (symbol, date) · exact price match · `is_stale` and universe 100% | P2 |

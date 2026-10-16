@@ -167,6 +167,23 @@ models:
             columns: [index_code, trade_date]
       - not_empty
 
+  - name: fct_price_revision
+    description: >
+      One row per pull that changed rows of an earlier pull of the same (source, symbol):
+      a vendor history rewrite, classed same_close, rescale, noise or other (P4, Q1;
+      the classes in the model's header, thresholds in dbt_project.yml).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [_source_id, symbol, _ingested_at, _source_file]
+    columns:
+      - name: revision_class
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [same_close, rescale, noise, other]
+
 unit_tests:
   - name: calendar_observed_history_then_rule
     description: >
@@ -388,3 +405,63 @@ unit_tests:
         - {symbol: OK, is_breakdown_valid: true, foreign_buy_match_value_vnd: 70, foreign_buy_total_value_vnd: 100}
         - {symbol: GAP, is_breakdown_valid: false, foreign_buy_match_value_vnd: null, foreign_buy_total_value_vnd: 100}
         - {symbol: OLD, is_breakdown_valid: false, foreign_buy_match_value_vnd: null, foreign_buy_total_value_vnd: 100}
+
+  - name: price_revision_classes
+    description: >
+      One known answer per class. RES: the whole history moved by 0.9, one close rounded
+      to the 10-VND grid (4 VND off) - rescale. VOL: only a volume changed - same_close.
+      NOI: a 0.1% move on a window - noise (a coverage test alone would call it other).
+      WIN: 0.9 on a window, first row untouched - other, not rescale. TWO: two ratios at
+      once - other. ZER: a close from 0 has no ratio - other. EDG (ratio 0.75, exact in binary): 20 VND off the
+      reference ratio is a rescale, 21 is not (the bound is inclusive). ONE: a row left out of a 0.75
+      rescale - other. RND: a row that 0.1% rounds back to itself (10 VND off) - rescale.
+    model: fct_price_revision
+    overrides:
+      vars:
+        revision_rescale_min_coverage: 0.7   # lower than prod, so ONE and RND isolate the deviation
+        revision_rescale_max_deviation_vnd: 20
+        revision_noise_max_move: 0.005
+    given:
+      - input: ref('int_prices__revisions')
+        rows:
+          - {_source_id: p, symbol: RES, trade_date: 2026-07-01, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 9000, old_close_vnd: 10000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: RES, trade_date: 2026-07-02, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 11110, old_close_vnd: 12340, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: RES, trade_date: 2026-07-03, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 36000, old_close_vnd: 40000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: RES, trade_date: 2026-07-04, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 41000, old_close_vnd: 41000, is_close_changed: false, is_changed: false}
+          - {_source_id: p, symbol: VOL, trade_date: 2026-07-03, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 20000, old_close_vnd: 20000, is_close_changed: false, is_changed: true}
+          - {_source_id: p, symbol: NOI, trade_date: 2026-07-01, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 10000, old_close_vnd: 10000, is_close_changed: false, is_changed: false}
+          - {_source_id: p, symbol: NOI, trade_date: 2026-07-02, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 10000, old_close_vnd: 10000, is_close_changed: false, is_changed: false}
+          - {_source_id: p, symbol: NOI, trade_date: 2026-07-03, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 10010, old_close_vnd: 10000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: NOI, trade_date: 2026-07-04, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 10010, old_close_vnd: 10000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: WIN, trade_date: 2026-07-01, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 10000, old_close_vnd: 10000, is_close_changed: false, is_changed: false}
+          - {_source_id: p, symbol: WIN, trade_date: 2026-07-02, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 9000, old_close_vnd: 10000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: WIN, trade_date: 2026-07-03, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 9000, old_close_vnd: 10000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: TWO, trade_date: 2026-07-01, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 8000, old_close_vnd: 10000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: TWO, trade_date: 2026-07-02, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 45000, old_close_vnd: 50000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: ZER, trade_date: 2026-07-01, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 10000, old_close_vnd: 0, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: ZER, trade_date: 2026-07-02, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 9000, old_close_vnd: 10000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: EDG, trade_date: 2026-07-01, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: g, close_vnd: 7520, old_close_vnd: 10000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: EDG, trade_date: 2026-07-02, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: g, close_vnd: 75000, old_close_vnd: 100000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: EDG, trade_date: 2026-07-01, _ingested_at: "2026-09-02 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: h, close_vnd: 7521, old_close_vnd: 10000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: EDG, trade_date: 2026-07-02, _ingested_at: "2026-09-02 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: h, close_vnd: 75000, old_close_vnd: 100000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: ONE, trade_date: 2026-07-01, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 7500, old_close_vnd: 10000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: ONE, trade_date: 2026-07-02, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 10000, old_close_vnd: 10000, is_close_changed: false, is_changed: false}
+          - {_source_id: p, symbol: ONE, trade_date: 2026-07-03, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 75000, old_close_vnd: 100000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: ONE, trade_date: 2026-07-04, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 75000, old_close_vnd: 100000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: RND, trade_date: 2026-07-01, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 10000, old_close_vnd: 10000, is_close_changed: false, is_changed: false}
+          - {_source_id: p, symbol: RND, trade_date: 2026-07-02, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 99900, old_close_vnd: 100000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: RND, trade_date: 2026-07-03, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 99900, old_close_vnd: 100000, is_close_changed: true, is_changed: true}
+          - {_source_id: p, symbol: RND, trade_date: 2026-07-04, _ingested_at: "2026-09-01 09:00:00+00", _ingest_partition: 2026-09-01, _source_file: f, close_vnd: 99900, old_close_vnd: 100000, is_close_changed: true, is_changed: true}
+    expect:
+      rows:
+        - {symbol: RES, _source_file: f, rows_changed: 3, rows_compared_to_last_change: 3, revision_class: rescale}
+        - {symbol: VOL, _source_file: f, rows_changed: 1, rows_compared_to_last_change: 1, revision_class: same_close}
+        - {symbol: NOI, _source_file: f, rows_changed: 2, rows_compared_to_last_change: 4, revision_class: noise}
+        - {symbol: WIN, _source_file: f, rows_changed: 2, rows_compared_to_last_change: 3, revision_class: other}
+        - {symbol: TWO, _source_file: f, rows_changed: 2, rows_compared_to_last_change: 2, revision_class: other}
+        - {symbol: ZER, _source_file: f, rows_changed: 2, rows_compared_to_last_change: 2, revision_class: other}
+        - {symbol: EDG, _source_file: g, rows_changed: 2, rows_compared_to_last_change: 2, revision_class: rescale}
+        - {symbol: EDG, _source_file: h, rows_changed: 2, rows_compared_to_last_change: 2, revision_class: other}
+        - {symbol: ONE, _source_file: f, rows_changed: 3, rows_compared_to_last_change: 4, revision_class: other}
+        - {symbol: RND, _source_file: f, rows_changed: 3, rows_compared_to_last_change: 4, revision_class: rescale}
+

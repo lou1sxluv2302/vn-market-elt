@@ -33,10 +33,18 @@ Per-symbol signatures are compared first; rows are fetched only for symbols that
 Read-only: v1's DuckDB (`read_only=True`); BigQuery marts as `sa-bi-reader` through
 impersonation (it can read `marts_*` and nothing else); holidays from the seed's file.
 
-Exit codes: 0 = all checks pass · 1 = a check fails · 2 = usage, config or access error.
+Daily (P4): `--log FILE` appends one JSON line per run - the last two observed sessions,
+each check's verdict and the counts behind it; the private daily run calls it after the
+public build. `--streak FILE` reads that log offline and prints how many consecutive
+sessions, up to the latest, passed (P4 is done at 10). A session counts once, by its
+latest run; a session without a run, or with a failed or unfinished one, breaks the streak.
+
+Exit codes: 0 = all checks pass (or the streak printed) · 1 = a check fails · 2 = usage,
+config or access error.
 
 Usage:
-    python tools/reconcile_v1_marts.py
+    python tools/reconcile_v1_marts.py [--log logs/reconcile.jsonl]
+    python tools/reconcile_v1_marts.py --streak logs/reconcile.jsonl
     python tools/reconcile_v1_marts.py --self-test
 """
 
@@ -44,6 +52,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -286,7 +295,44 @@ def compare_universe(
 # --- data access (read-only) --------------------------------------------------
 
 
-def run(cfg: dict, env: dict) -> int:
+def last_two_sessions(calendar: pa.Table) -> tuple[str | None, str | None]:
+    """(latest, previous) observed trading day of v2's calendar, ISO dates."""
+    days = sorted(
+        d
+        for d, trading, observed in zip(
+            calendar["calendar_date"].to_pylist(),
+            calendar["is_trading_day"].to_pylist(),
+            calendar["observed"].to_pylist(),
+            strict=True,
+        )
+        if trading and observed
+    )
+    last = days[-1].isoformat() if days else None
+    previous = days[-2].isoformat() if len(days) > 1 else None
+    return last, previous
+
+
+def streak(lines: list[dict]) -> int:
+    """Consecutive passing sessions up to the latest one in the log.
+
+    Each session's latest run counts; a session is consecutive with the one before when its
+    `previous_session` is that session (the calendar says no session lies between them).
+    """
+    latest: dict[str, dict] = {}
+    for line in lines:  # appended in run order: a later run of a session replaces it
+        if line.get("last_session"):
+            latest[line["last_session"]] = line
+    count, expected = 0, None
+    for session in sorted(latest, reverse=True):
+        line = latest[session]
+        if (expected is not None and session != expected) or not line.get("passed"):
+            break
+        count += 1
+        expected = line.get("previous_session")
+    return count
+
+
+def run(cfg: dict, env: dict, log: Path | None = None) -> int:
     from google.cloud import bigquery
 
     from vnmarket.common.gcp import impersonated
@@ -350,6 +396,7 @@ def run(cfg: dict, env: dict) -> int:
             .to_arrow_table()
         )
         cal = compare_calendar(v2_cal, v1_cal, holidays)
+        last_session, previous_session = last_two_sessions(v2_cal)
         print(f"     calendar: {cal}")
         verdicts["calendar: history exactly v1's; later differences are seeded holidays"] = set(
             cal
@@ -468,7 +515,25 @@ def run(cfg: dict, env: dict) -> int:
     verdicts["v1's DuckDB unchanged during the run"] = duck_path.stat().st_mtime_ns == before
     for name, ok in verdicts.items():
         print(f"{'✅' if ok else '🔴'} {name}")
-    return 0 if all(verdicts.values()) else 1
+    passed = all(verdicts.values())
+    if log:
+        record = {
+            "run_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+            "last_session": last_session,
+            "previous_session": previous_session,
+            "passed": passed,
+            "checks": verdicts,
+            "counts": {
+                "calendar": cal,
+                "prices": prices,
+                "exchange": exchange,
+                "universe": universe,
+            },
+        }
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, default=str) + "\n")
+    return 0 if passed else 1
 
 
 def self_test() -> int:
@@ -659,6 +724,41 @@ def self_test() -> int:
         )
         == set(),
     }
+
+    def run_line(session: str, previous: str, passed: bool) -> dict:
+        return {"last_session": session, "previous_session": previous, "passed": passed}
+
+    log = [
+        run_line("2026-10-12", "2026-10-09", True),
+        run_line("2026-10-13", "2026-10-12", False),
+        run_line("2026-10-13", "2026-10-12", True),  # rerun the same session: it counts
+        run_line("2026-10-14", "2026-10-13", True),
+        run_line("2026-10-15", "2026-10-14", True),
+    ]
+    calendar = pa.table(
+        {
+            "calendar_date": [d("2026-10-14"), d("2026-10-15"), d("2026-10-17"), d("2026-10-19")],
+            "is_trading_day": [True, True, False, True],
+            "observed": [True, True, True, False],
+        }
+    )
+    checks |= {
+        "control streak: a session's latest run counts": streak(log) == 4,
+        "planted: a session without a run breaks the streak": streak(
+            [x for x in log if x["last_session"] != "2026-10-14"]
+        )
+        == 1,
+        "planted: the latest session failed - streak 0": streak(
+            [*log, run_line("2026-10-16", "2026-10-15", False)]
+        )
+        == 0,
+        "planted: a failed session with no rerun stops the count there": streak(
+            [x for x in log if x is not log[2]]
+        )
+        == 2,
+        "last two sessions: observed trading days only": last_two_sessions(calendar)
+        == ("2026-10-15", "2026-10-14"),
+    }
     checks["an unknown argument is rejected with exit 2"] = (
         subprocess.run(  # noqa: S603
             [sys.executable, __file__, "--bogus"], capture_output=True, timeout=120
@@ -674,15 +774,25 @@ def main() -> int:
     utf8_stdio()
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--self-test", action="store_true", help="run offline known-answer tests")
+    parser.add_argument("--log", type=Path, help="append this run's result as one JSON line")
+    parser.add_argument("--streak", type=Path, help="print the passing streak of a log, offline")
     args = parser.parse_args()  # rejects unknown arguments with exit code 2
     if args.self_test:
         return self_test()
+    if args.streak:
+        try:
+            lines = [json.loads(x) for x in args.streak.read_text("utf-8").splitlines() if x]
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"⚪ not run: {exc}", file=sys.stderr)
+            return 2
+        print(f"{streak(lines)} consecutive passing sessions up to the latest in {args.streak}")
+        return 0
     from google.api_core.exceptions import GoogleAPIError
     from google.auth.exceptions import GoogleAuthError
 
     try:  # only configuration and access problems are "not run"; a code bug raises
         cfg, env = load_config("el"), load_env()
-        return run(cfg, env)
+        return run(cfg, env, args.log)
     except FileNotFoundError as exc:
         print(f"⚪ not run: {exc}", file=sys.stderr)
         return 2

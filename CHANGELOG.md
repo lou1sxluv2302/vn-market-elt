@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- P4 (#34): `fct_price_revision` classes every vendor history rewrite (same_close,
+  rescale, noise, other; thresholds measured on prod) with unit tests, two planted faults
+  and a warning on `other` above the measured count; `reconcile_v1_marts.py --log` appends
+  a daily result and `--streak` counts consecutive passing sessions. ADR-0029.
 - S0 feed probe (#32): `src/vnmarket/collector/feed_probe.py` records every feed message
   verbatim with `received_at`, connection events and RAM/CPU, under time limits, by path
   under the interpreter that holds the licensed feed library; `feed_report.py` aggregates
