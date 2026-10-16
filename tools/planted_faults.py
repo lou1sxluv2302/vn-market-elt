@@ -232,13 +232,21 @@ def fixture() -> tuple[list[dict], list[dict]]:
 OLDER_SNAPSHOT_AT = "2026-04-01 09:00:00+00"
 
 
-def flow_row(prefix: str, symbol: str, day: dt.date, value: float, at: str) -> dict:
+def flow_row(
+    prefix: str, symbol: str, day: dt.date, value: float, at: str, match_lost: bool = False
+) -> dict:
+    """match + put-through = total on every side and unit (put-through 0); with `match_lost`,
+    match is 0 while total is not - v1's wrong-zero pattern (flows.md §2.3)."""
     row_ = {"symbol": symbol, "session_date": day, "breakdown_valid": True, "source": "fixture"}
     for side in ("buy", "sell", "net"):
         for unit in ("vol", "val"):
-            for src in ("matched", "deal", "total"):
-                row_[f"{prefix}_{side}_{unit}_{src}"] = value
+            row_[f"{prefix}_{side}_{unit}_matched"] = 0.0 if match_lost else value
+            row_[f"{prefix}_{side}_{unit}_deal"] = 0.0
+            row_[f"{prefix}_{side}_{unit}_total"] = value
     return {**row_, "_source_sha256": f"sha-{at}", "_loaded_at": at}
+
+
+BEFORE_SPLIT_CUTOFF = dt.date(2019, 12, 31)  # foreign splits trusted from 2020-01-02
 
 
 def snapshot_tables() -> dict[str, Rows]:
@@ -247,10 +255,15 @@ def snapshot_tables() -> dict[str, Rows]:
     tables: dict[str, Rows] = {}
     for prefix, table in (("fr", "foreign_trade_daily"), ("prop", "prop_trade_daily")):
         tables[table] = [
-            flow_row(prefix, s, d, 1_000_000.0 * (i + 1), at)
+            flow_row(
+                prefix, s, d, 1_000_000.0 * (i + 1), at, match_lost=(s == "S02" and d == days[0])
+            )
             for at in (OLDER_SNAPSHOT_AT, PULLED_AT)
             for i, s in enumerate(sorted(LIQUID))
             for d in days
+        ] + [
+            flow_row(prefix, "S01", BEFORE_SPLIT_CUTOFF, 5_000_000.0, at)
+            for at in (OLDER_SNAPSHOT_AT, PULLED_AT)
         ]
     tables["index_daily"] = [
         {
@@ -391,16 +404,22 @@ FAULTS = [
             "not_empty_stg_vnstock__foreign_trade_",
             "not_empty_stg_vnstock__prop_trade_",
             "not_empty_stg_vnstock__index_daily_",
+            "not_empty_fct_foreign_flow_daily_",
+            "not_empty_fct_prop_flow_daily_",
+            "not_empty_fct_index_daily_",
         ),
         snapshots=lambda tables: dict.fromkeys(tables, []),
     ),
     Fault(
         "older_snapshots_kept",
-        "the newest-snapshot filter lost in staging",
+        "the newest-snapshot filter lost in staging (echoes: the flow and index marts)",
         fail(
             "unique_combination_stg_vnstock__foreign_trade_symbol__trade_date",
             "unique_combination_stg_vnstock__prop_trade_symbol__trade_date",
             "unique_combination_stg_vnstock__index_daily_index_code__trade_date",
+            "unique_combination_fct_foreign_flow_daily_symbol__trade_date",
+            "unique_combination_fct_prop_flow_daily_symbol__trade_date",
+            "unique_combination_fct_index_daily_index_code__trade_date",
         ),
         mutants=tuple(
             Mutant(
@@ -409,6 +428,49 @@ FAULTS = [
                 "where _loaded_at <= (",
             )
             for name in ("foreign_trade", "prop_trade", "index_daily")
+        ),
+    ),
+    Fault(
+        "split_kept_on_invalid_rows",
+        "the flow split shown on rows that fail match + put-through = total",
+        fail(
+            "split_null_when_invalid_fct_foreign_flow_daily_foreign",
+            "split_null_when_invalid_fct_prop_flow_daily_prop",
+        ),
+        mutants=(
+            Mutant(
+                "macros/flow_breakdown.sql",
+                "case when is_breakdown_valid then",
+                "case when true then",
+                2,
+            ),
+        ),
+    ),
+    Fault(
+        "flow_tolerance_in_wrong_unit",
+        "the identity tolerance entered as a value threshold, so every gap passes",
+        fail(
+            "breakdown_identity_holds_fct_foreign_flow_daily_foreign",
+            "breakdown_identity_holds_fct_prop_flow_daily_prop",
+        ),
+        mutants=(
+            Mutant(
+                "macros/flow_breakdown.sql",
+                "<= {{ var('flow_breakdown_tolerance') }}",
+                "<= {{ var('flow_breakdown_tolerance') }} + 1000000000000",
+            ),
+        ),
+    ),
+    Fault(
+        "pre_2020_split_trusted",
+        "the foreign split cut-off dropped",
+        fail("foreign_split_not_valid_before_cutoff"),
+        mutants=(
+            Mutant(
+                "macros/flow_breakdown.sql",
+                "and trade_date >= cast('{{ valid_from }}' as date)",
+                "",
+            ),
         ),
     ),
     Fault(

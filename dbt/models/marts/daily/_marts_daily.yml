@@ -96,6 +96,63 @@ models:
       - name: is_in_universe
         data_tests: [not_null]
 
+
+  - name: fct_foreign_flow_daily
+    description: Foreign flow per symbol and session; the match / put-through split only where valid.
+    columns:
+      - name: symbol
+        data_tests: [not_null]
+      - name: trade_date
+        data_tests: [not_null]
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, trade_date]
+      - not_empty
+      - breakdown_identity_holds:
+          arguments:
+            prefix: foreign
+      - split_null_when_invalid:
+          arguments:
+            prefix: foreign
+      - row_condition:
+          # flows.md §2.3: foreign splits are reliable only from 2020.
+          name: foreign_split_not_valid_before_cutoff
+          arguments:
+            condition: "not is_breakdown_valid or trade_date >= cast('{{ var(\"foreign_breakdown_valid_from\") }}' as date)"
+
+  - name: fct_prop_flow_daily
+    description: Proprietary flow per symbol and session, best-effort; split only where valid.
+    columns:
+      - name: symbol
+        data_tests: [not_null]
+      - name: trade_date
+        data_tests: [not_null]
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, trade_date]
+      - not_empty
+      - breakdown_identity_holds:
+          arguments:
+            prefix: prop
+      - split_null_when_invalid:
+          arguments:
+            prefix: prop
+
+  - name: fct_index_daily
+    description: Index levels per index code and session, in points.
+    columns:
+      - name: index_code
+        data_tests: [not_null]
+      - name: trade_date
+        data_tests: [not_null]
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [index_code, trade_date]
+      - not_empty
+
 unit_tests:
   - name: calendar_observed_history_then_rule
     description: >
@@ -295,3 +352,25 @@ unit_tests:
         - {symbol: NUL, is_in_universe: false, exclusion_reason: stale}
         - {symbol: NEW, is_in_universe: false, exclusion_reason: insufficient_history}
         - {symbol: THN, is_in_universe: false, exclusion_reason: below_liquidity_floor}
+
+  - name: flow_split_kept_only_where_valid
+    description: >
+      Valid from 2020 with an exact identity keeps the split (OK); a row whose match +
+      put-through misses total loses it but keeps total (GAP, v1's wrong-zero pattern);
+      a row before the cut-off loses it even when the identity holds (OLD).
+    model: fct_foreign_flow_daily
+    overrides:
+      vars:
+        flow_breakdown_tolerance: 0
+        foreign_breakdown_valid_from: "2020-01-02"
+    given:
+      - input: ref('stg_vnstock__foreign_trade')
+        rows:
+          - {symbol: OK, trade_date: 2026-07-31, foreign_buy_match_value_vnd: 70, foreign_buy_put_through_value_vnd: 30, foreign_buy_total_value_vnd: 100, foreign_sell_match_value_vnd: 5, foreign_sell_put_through_value_vnd: 0, foreign_sell_total_value_vnd: 5, foreign_buy_match_qty: 7, foreign_buy_put_through_qty: 3, foreign_buy_total_qty: 10, foreign_sell_match_qty: 1, foreign_sell_put_through_qty: 0, foreign_sell_total_qty: 1}
+          - {symbol: GAP, trade_date: 2026-07-31, foreign_buy_match_value_vnd: 0, foreign_buy_put_through_value_vnd: 0, foreign_buy_total_value_vnd: 100, foreign_sell_match_value_vnd: 5, foreign_sell_put_through_value_vnd: 0, foreign_sell_total_value_vnd: 5, foreign_buy_match_qty: 0, foreign_buy_put_through_qty: 0, foreign_buy_total_qty: 10, foreign_sell_match_qty: 1, foreign_sell_put_through_qty: 0, foreign_sell_total_qty: 1}
+          - {symbol: OLD, trade_date: 2019-12-31, foreign_buy_match_value_vnd: 70, foreign_buy_put_through_value_vnd: 30, foreign_buy_total_value_vnd: 100, foreign_sell_match_value_vnd: 5, foreign_sell_put_through_value_vnd: 0, foreign_sell_total_value_vnd: 5, foreign_buy_match_qty: 7, foreign_buy_put_through_qty: 3, foreign_buy_total_qty: 10, foreign_sell_match_qty: 1, foreign_sell_put_through_qty: 0, foreign_sell_total_qty: 1}
+    expect:
+      rows:
+        - {symbol: OK, is_breakdown_valid: true, foreign_buy_match_value_vnd: 70, foreign_buy_total_value_vnd: 100}
+        - {symbol: GAP, is_breakdown_valid: false, foreign_buy_match_value_vnd: null, foreign_buy_total_value_vnd: 100}
+        - {symbol: OLD, is_breakdown_valid: false, foreign_buy_match_value_vnd: null, foreign_buy_total_value_vnd: 100}

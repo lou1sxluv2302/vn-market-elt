@@ -15,10 +15,11 @@ locals {
     intermediate   = "dbt intermediate models."
     marts_intraday = "dbt marts for the hot path (views)."
     marts_daily    = "dbt marts for the cold path."
+    marts_research = "Research models built from the marts by a separate dbt project."
   }
 
   # dbt's dev target (spec §14.8): same layers, prefixed, tables expire after 7 days.
-  dev_datasets = toset(["dev_staging", "dev_intermediate", "dev_marts_daily"])
+  dev_datasets = toset(["dev_staging", "dev_intermediate", "dev_marts_daily", "dev_marts_research"])
 
   # Spec §14.2. Keys are the account ids (sa-<role>).
   service_accounts = {
@@ -37,6 +38,7 @@ locals {
     intermediate   = { "sa-dbt" = "roles/bigquery.dataEditor" }
     marts_intraday = { "sa-dbt" = "roles/bigquery.dataEditor", "sa-bi-reader" = "roles/bigquery.dataViewer" }
     marts_daily    = { "sa-dbt" = "roles/bigquery.dataEditor", "sa-bi-reader" = "roles/bigquery.dataViewer" }
+    marts_research = { "sa-dbt" = "roles/bigquery.dataEditor", "sa-bi-reader" = "roles/bigquery.dataViewer" }
   }
 
   dataset_bindings = merge([
