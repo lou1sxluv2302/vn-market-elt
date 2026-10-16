@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- S2 load (#38): the uploader appends each batch to `raw_vps_stream.messages` from the
+  file it verified against GCS, exactly once by job id, and deletes it only when the job's
+  rows equal the file's; objects carry their message count; `tools/reconcile_stream.py`
+  compares GCS and BigQuery per batch. Terraform: the table, and the owner may impersonate
+  `sa-collector`. ADR-0031.
 - S1 collector code (#36): `stream_collector.py` writes every feed message verbatim to
   one parquet file per 60-second window in a local spool (atomic, restart-safe names,
   back-off reconnects, confirmed holidays skipped); `uploader.py` moves the spool to the raw

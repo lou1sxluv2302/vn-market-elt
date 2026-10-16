@@ -18,7 +18,13 @@ el = ["dlt[bigquery,duckdb]==1.30.0"]
 dbt = ["dbt-core==1.12.5", "dbt-bigquery==1.12.1", "dbt-duckdb==1.11.0"]
 # Stream collector (S1). The licensed feed library is installed separately on the machine
 # that holds the licence; tzdata gives Windows the IANA time zones.
-collector = ["pyarrow==26.0.0", "google-cloud-storage==3.1.1", "google-crc32c==1.9.0", "tzdata==2026.5"]
+collector = [
+    "pyarrow==26.0.0",
+    "google-cloud-storage==3.1.1",
+    "google-cloud-bigquery==3.46.1",
+    "google-crc32c==1.9.0",
+    "tzdata==2026.5",
+]
 
 [build-system]
 requires = ["setuptools>=69"]
