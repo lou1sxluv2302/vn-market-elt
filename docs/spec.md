@@ -38,7 +38,7 @@ they become the source of progress and this list is retired.
 **Spec**
 - [x] v6 approved 2026-10-08 - research track before streaming (D23, D24); research moved to a private repo 2026-10-13
 
-**Cold path · research · streaming**
+**Cold path · research · streaming** (tags: `v0.1.0` on P0's last commit, `v0.2.0` on the cold path's, both 2026-10-17)
 - [x] P1 history load - `raw_vnstock` holds every pull of v1's daily OHLCV (145 files to 2026-10-13) and the symbol lists; `tools/reconcile_v1.py` green on all four checks (#18)
 - [x] P2 dbt (#20) - project, keyless identity, market-rule seeds, staging, intermediate (#21); marts (calendar, securities SCD2, prices, liquidity, universe) and `tools/reconcile_v1_marts.py` green on all four checks, every difference named by its mechanism (#22)
 - [x] P3 data-quality tests (#23) - v1's checks for the layers v2 has as 66 dbt data tests; `tools/planted_faults.py` proves each can go red (32 faults, in CI); `dbt build --target prod` green 2026-10-15
@@ -47,7 +47,7 @@ they become the source of progress and this list is retired.
 - [x] S0.1 feed probe and report (#33); a one-minute connection check connected (2026-10-16)
 - [ ] S0.2 local probe, 30 minutes of a live session (2026-10-19, 09:30) · S0.3-S0.4 the cloud gate
 - [x] S1.1-S1.3 collector and verified uploader (#37, ADR-0030)
-- [ ] S1.4 outside alert (ADR-0032): metric and policy written, tried on the live metric; planted network cut in a live session · S1.5-S1.6 deployment, 5 sessions - after the gate
+- [ ] S1.4 outside alert (ADR-0032): metric and policy written, tried on the live metric, policy applied and checked 2026-10-17; planted network cut in a live session · S1.5-S1.6 deployment, 5 sessions - after the gate
 - [x] S2.1-S2.3 load exactly once from the verified file, `tools/reconcile_stream.py` (#39, ADR-0031); table and owner impersonation applied and checked 2026-10-17
 - [ ] S2.4 first live session reconciled per batch
 - [ ] S3 hot path: dbt views + Power BI

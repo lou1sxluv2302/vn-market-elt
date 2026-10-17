@@ -29,6 +29,19 @@ All notable changes to this project are documented here. The format follows
   verbatim with `received_at`, connection events and RAM/CPU, under time limits, by path
   under the interpreter that holds the licensed feed library; `feed_report.py` aggregates
   a run (counts, sizes, field names per type, no values). Runbook `s0-feed-probe.md`.
+
+### Fixed
+- `fct_price_daily`'s tick rank breaks a tie by source (primary first), so a key that
+  reaches it twice no longer keeps a row chosen by row order; the planted fault
+  `both_sources_kept` was red on Windows and green on Linux because of it (#42). Prod has
+  one row per key: its output is unchanged.
+
+## [0.2.0] - 2026-10-16
+
+Cold path: v1's daily history on BigQuery, dbt marts reconciled against v1, 66 data
+tests each proven able to fail. Tagged on `3e3a274` (#31) on 2026-10-17.
+
+### Added
 - `load_v1_history --datasets` loads a chosen subset (default: all; unknown names refused)
   and counts only what it loaded; `tools/prune_flow_snapshots.py` (dry run by default)
   removes flow snapshots older than the newest, the one exception to append-only raw (#29).
@@ -93,6 +106,28 @@ All notable changes to this project are documented here. The format follows
   bronze tree (`tests/fixtures/synthetic_bronze.py`) with a local DuckDB destination.
   Runbook `docs/runbooks/p1-history-load.md`.
 - `sa-loader`: writes `raw_vnstock` only; the owner reaches it by impersonation, no key.
+- README for the cold path: lineage diagram, what is built and how it is verified (#31).
+
+### Measurements
+- `tools/reconcile_v1.py`: 4/4 checks - raw equals v1's parquet per file (145 files,
+  12,339,172 OHLCV rows to 2026-10-13); latest-wins reproduces v1 except residuals at
+  their measured counts; reference lists equal.
+- `tools/reconcile_v1_marts.py`: 4/4 checks, every difference named by its mechanism
+  (2026-10-16: 949,799 price rows equal row by row on the 261 symbols whose signatures
+  differ, 7,966 source_choice, 179 fallback_batch_not_in_log, 26
+  dropped_after_neighbour_source_change, 4 stale_from_neighbour; 1,287 symbols identical
+  by signature).
+- `tools/planted_faults.py`: the control passes every data test; each planted fault
+  turns red exactly the tests it names; no data test is never red.
+- `dbt build --target prod`: green, 136 nodes (2026-10-16).
+
+## [0.1.0] - 2026-10-13
+
+Foundations: a public repository with baseline security, CI as required checks, and
+the Google Cloud foundation in Terraform; knowledge harvested from v1. Tagged on
+`0104eba` (#15) on 2026-10-17.
+
+### Added
 - Terraform (#14, ADR-0027): `bootstrap` stack (APIs, versioned state bucket) and
   `main` stack (raw bucket, 6 datasets, 4 service accounts with resource-scoped IAM,
   WIF for GitHub Actions pinned to the repository id, `vnstock-api-key` container,
@@ -151,3 +186,9 @@ All notable changes to this project are documented here. The format follows
 - `tools/secret_scan.py`: one git entry point, GitHub noreply addresses allowed by
   domain, self-test covers e-mail warnings.
 
+### Measurements
+- A pull request with a red check was blocked by `protect-main`; gitleaks caught a
+  planted key in a throwaway repository (#9).
+- Terraform: `bootstrap` 13 and `main` 46 resources applied by the owner;
+  `infra / terraform-plan` green through WIF.
+- Security audit before the first push (2026-10-13): no secret in any git object.
