@@ -1,6 +1,6 @@
 # ADR-0030: S1 - collector and uploader as two processes; the stale-feed alert from outside
 
-- Status: Accepted
+- Status: Accepted; decision 3 amended by [ADR-0032](0032-stale-feed-alert-from-a-custom-metric.md) (a custom metric, not a log-based one)
 - Date: 2026-10-16
 - Spec: S1 (amends the `healthcheck.py` line), §14.4
 

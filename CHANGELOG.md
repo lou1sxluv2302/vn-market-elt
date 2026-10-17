@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- S1.4 stale-feed alert (#41): the uploader writes one point of a custom metric per
+  loaded batch; a PromQL alert policy e-mails when none arrives for 3 minutes inside a
+  trading window (windows in `config/collector.yml`, confirmed holidays from the seed),
+  tried on the live metric with a control and planted cases. ADR-0032.
 - S2 load (#38): the uploader appends each batch to `raw_vps_stream.messages` from the
   file it verified against GCS, exactly once by job id, and deletes it only when the job's
   rows equal the file's; objects carry their message count; `tools/reconcile_stream.py`

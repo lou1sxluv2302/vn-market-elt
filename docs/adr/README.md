@@ -35,3 +35,4 @@ Decisions D1-D24 (ADR-0025 supersedes ADR-0015) of [`../spec.md`](../spec.md), o
 | [0029](0029-increments-from-v1-parquet-and-vendor-rewrites-classified.md) | P4: increments from v1's parquet for now; vendor rewrites classified, not blocked (amends 0002) |
 | [0030](0030-collector-batches-and-an-outside-alert.md) | S1: collector and uploader as two processes; the stale-feed alert from outside |
 | [0031](0031-load-stream-batches-from-the-verified-file.md) | S2: load each stream batch from the verified local file, exactly once |
+| [0032](0032-stale-feed-alert-from-a-custom-metric.md) | S1.4: the stale-feed alert watches a custom metric the uploader writes (amends 0030) |

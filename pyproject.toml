@@ -22,6 +22,7 @@ collector = [
     "pyarrow==26.0.0",
     "google-cloud-storage==3.1.1",
     "google-cloud-bigquery==3.46.1",
+    "google-cloud-monitoring==2.32.0",
     "google-crc32c==1.9.0",
     "tzdata==2026.5",
 ]

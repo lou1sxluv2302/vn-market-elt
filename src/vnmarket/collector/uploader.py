@@ -18,8 +18,10 @@ two steps, and the local file is deleted only after both:
    the previous job is known to have failed. The job's `output_rows` must equal the file's
    rows; otherwise the file moves to `conflict/` (rows were appended: a person decides).
 
-One JSON line per finished batch (`batch_uploaded`, with messages and loaded rows): the
-alert of step S1.4 counts these lines. Time limits: every upload, metadata read and job wait.
+One JSON line per finished batch (`batch_uploaded`, with messages and loaded rows), and one
+point of the custom metric `upload.metric_type` (at most one per `metric_min_seconds`): the
+stale-feed alert of S1.4 watches that metric, so it works on any host without a log agent
+(ADR-0032). Time limits: every upload, metadata read, job wait and metric write.
 
 Credentials: none in code (D12). On the VM, the attached service account; elsewhere the
 owner's application-default credentials, impersonating `collector.service_account` from
@@ -69,6 +71,56 @@ class Bucket(Protocol):
 class Warehouse(Protocol):
     def load(self, path: Path, job_id: str) -> int: ...  # rows appended
     def job_rows(self, job_id: str) -> int | None: ...  # rows if it succeeded, None if failed
+
+
+class MetricSink(Protocol):
+    def record(self, messages: int) -> None: ...
+
+
+class GcpMetric:
+    """One point of a custom gauge per call (S1.4): the stale-feed alert watches it."""
+
+    def __init__(self, project: str, metric_type: str, timeout: float, credentials: Any = None):
+        from google.cloud import monitoring_v3
+
+        self.monitoring = monitoring_v3
+        self.client = monitoring_v3.MetricServiceClient(credentials=credentials)
+        self.project, self.metric_type, self.timeout = project, metric_type, timeout
+
+    def record(self, messages: int) -> None:
+        m = self.monitoring
+        series = m.TimeSeries()
+        series.metric.type = self.metric_type
+        series.resource.type = "global"
+        series.resource.labels["project_id"] = self.project
+        now = time.time()
+        interval = m.TimeInterval(
+            {"end_time": {"seconds": int(now), "nanos": int((now % 1) * 1e9)}}
+        )
+        series.points = [m.Point({"interval": interval, "value": {"int64_value": messages}})]
+        self.client.create_time_series(
+            name=f"projects/{self.project}", time_series=[series], timeout=self.timeout
+        )
+
+
+class Heartbeat:
+    """Records loaded batches to the metric, at most one point per `min_seconds` (Cloud
+    Monitoring refuses points written faster than one every 5 s per series). A failed write
+    is logged and never holds a batch back: the alert is about batches, not about itself."""
+
+    def __init__(self, sink: MetricSink, min_seconds: float, clock=time.monotonic) -> None:
+        self.sink, self.min_seconds, self.clock = sink, min_seconds, clock
+        self.last: float | None = None
+
+    def beat(self, messages: int) -> None:
+        now = self.clock()
+        if self.last is not None and now - self.last < self.min_seconds:
+            return
+        self.last = now
+        try:
+            self.sink.record(messages)
+        except Exception as exc:  # noqa: BLE001 - the batch is done either way
+            log_event("metric_failed", error=type(exc).__name__)
 
 
 def local_stat(path: Path) -> tuple[int, str]:
@@ -212,7 +264,13 @@ def load(spool: Path, path: Path, warehouse: Warehouse, state: dict) -> int | No
     return rows
 
 
-def upload_pass(spool: Path, bucket: Bucket, prefix: str, warehouse: Warehouse) -> dict[str, int]:
+def upload_pass(
+    spool: Path,
+    bucket: Bucket,
+    prefix: str,
+    warehouse: Warehouse,
+    heartbeat: Heartbeat | None = None,
+) -> dict[str, int]:
     """One pass over the spool; returns counts by outcome."""
     counts = {"uploaded": 0, "failed": 0, "conflict": 0}
     for path in pending(spool):
@@ -238,6 +296,8 @@ def upload_pass(spool: Path, bucket: Bucket, prefix: str, warehouse: Warehouse) 
             marker.unlink()
             log_event("batch_uploaded", batch=path.name, messages=messages, loaded_rows=rows)
             counts["uploaded"] += 1
+            if heartbeat:
+                heartbeat.beat(messages)
     return counts
 
 
@@ -248,12 +308,13 @@ def run(
     warehouse: Warehouse,
     stop_at: float | None,
     cfg: dict,
+    heartbeat: Heartbeat | None = None,
 ) -> int:
     """Poll until `stop_at` (epoch seconds), then drain; `None` means a single pass."""
     totals = {"uploaded": 0, "failed": 0, "conflict": 0}
 
     def one() -> None:
-        for k, v in upload_pass(spool, bucket, prefix, warehouse).items():
+        for k, v in upload_pass(spool, bucket, prefix, warehouse, heartbeat).items():
             totals[k] += v
 
     one()
@@ -453,6 +514,41 @@ def self_test() -> int:
         checks["run: exit 1 while anything is left or in conflict"] = (
             run(spool, bucket, "vps_stream", table, None, {}) == 1
         )
+
+        # The metric: one point per loaded batch, spaced; never for a failed batch; a failing
+        # sink holds nothing back.
+        class Sink:
+            def __init__(self, fail: bool = False) -> None:
+                self.points: list[int] = []
+                self.fail = fail
+
+            def record(self, messages: int) -> None:
+                if self.fail:
+                    raise TimeoutError("planted")
+                self.points.append(messages)
+
+        clock = [0.0]
+        sink = Sink()
+        beat = Heartbeat(sink, 10, clock=lambda: clock[0])
+        batch(20, "a1", "a2")
+        upload_pass(spool, bucket, "vps_stream", table, beat)
+        clock[0] = 5.0  # too soon after the last point
+        batch(21, "b1")
+        upload_pass(spool, bucket, "vps_stream", table, beat)
+        clock[0] = 16.0
+        batch(22, "c1", "c2", "c3")
+        table.fail_next = True  # the load fails on this pass: no point for it
+        upload_pass(spool, bucket, "vps_stream", table, beat)
+        upload_pass(spool, bucket, "vps_stream", table, beat)  # loaded now: a point
+        checks["metric: one point per loaded batch, spaced, none for a failed load"] = (
+            sink.points == [2, 3]
+        )
+        broken = Heartbeat(Sink(fail=True), 10, clock=lambda: clock[0])
+        batch(23, "d1")
+        checks["metric: a failing write never holds a batch back"] = upload_pass(
+            spool, bucket, "vps_stream", table, broken
+        )["uploaded"] >= 1 and not [p for p in pending(spool) if "091300" in p.name]
+
         checks["job ids: only letters, digits, dashes and underscores"] = (
             re.fullmatch(
                 r"[A-Za-z0-9_-]+",
@@ -508,6 +604,10 @@ def main() -> int:
         table = BigQueryTable(
             f"{project}.{up['load_table']}", up["call_timeout_seconds"], credentials, project
         )
+        heartbeat = Heartbeat(
+            GcpMetric(project, up["metric_type"], up["call_timeout_seconds"], credentials),
+            up["metric_min_seconds"],
+        )
     except (FileNotFoundError, KeyError) as exc:
         print(f"⚪ not run: {exc}", file=sys.stderr)
         return 2
@@ -517,7 +617,7 @@ def main() -> int:
         hour, minute = map(int, args.until.split(":"))
         stop_at = dt.datetime.now(tz).replace(hour=hour, minute=minute, second=0).timestamp()
     spool = args.spool or REPO_ROOT / cfg["spool_dir"]
-    return run(spool, bucket, up["prefix"], table, stop_at, up)
+    return run(spool, bucket, up["prefix"], table, stop_at, up, heartbeat)
 
 
 if __name__ == "__main__":
