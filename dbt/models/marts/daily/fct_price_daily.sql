@@ -47,8 +47,13 @@ with_tick as (
         w.match_qty, w.is_stale, w._source_id, w.session_seq, w.trading_week_id,
         w.exchange, w.is_in_scope, w.exchange_is_inferred,
         t.tick_vnd,
+        -- One row per key upstream (int_prices__chosen_source's grain test); should two
+        -- arrive, the primary source wins, so the result never depends on row order.
         row_number() over (
-            partition by w.symbol, w.trade_date order by t.price_from_vnd desc
+            partition by w.symbol, w.trade_date
+            order by
+                t.price_from_vnd desc,
+                case when w._source_id = '{{ var("primary_price_source") }}' then 0 else 1 end
         ) as tick_rank
     from with_exchange as w
     left join {{ ref('tick_size') }} as t

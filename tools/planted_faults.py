@@ -593,13 +593,12 @@ FAULTS = [
     # Defects dbt carries downstream: the echoes are named, each one explained.
     Fault(
         "both_sources_kept",
-        "source choice keeps every source's row (echoes: the flagged "
-        "grain and the fallback rows let through; fct_price_daily's tick rank keeps one row "
-        "per key, so the marts' grains stay green)",
+        "source choice keeps every source's row (echo: the flagged grain; fct_price_daily's "
+        "tick rank keeps one row per key, the primary first, so the marts' grains and the "
+        "fallback check stay green - before that tie-break the echo depended on row order)",
         fail(
             "unique_combination_int_prices__chosen_source_symbol__trade_date",
             "unique_combination_int_prices__flagged_symbol__trade_date",
-            "assert_fallback_only_without_clean_primary",
         ),
         mutants=(Mutant(CHOSEN, "where source_rank = 1", "where source_rank >= 1"),),
     ),
