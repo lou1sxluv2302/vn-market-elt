@@ -47,7 +47,7 @@ they become the source of progress and this list is retired.
 - [x] S0.1 feed probe and report (#33); a one-minute connection check connected (2026-10-16)
 - [ ] S0.2 local probe, 30 minutes of a live session (2026-10-19, 09:30) · S0.3-S0.4 the cloud gate
 - [x] S1.1-S1.3 collector and verified uploader (#37, ADR-0030)
-- [ ] S1.4-S1.6 outside alert, deployment, 5 sessions - after the gate
+- [ ] S1.4 outside alert (ADR-0032): metric and policy written, tried on the live metric; planted network cut in a live session · S1.5-S1.6 deployment, 5 sessions - after the gate
 - [x] S2.1-S2.3 load exactly once from the verified file, `tools/reconcile_stream.py` (#39, ADR-0031); table and owner impersonation applied and checked 2026-10-17
 - [ ] S2.4 first live session reconciled per batch
 - [ ] S3 hot path: dbt views + Power BI
@@ -245,7 +245,7 @@ decide whether to upsize (leaves the free tier).
 
 - `stream_collector.py`: WebSocket → buffer → every **60 s** write `dt=YYYY-MM-DD/batch=HHMMSS.parquet`, storing the **verbatim message** (`payload` JSON) + `received_at` + `batch_id`; parsing is dbt's job.
 - `uploader.py`: upload batches to GCS with retries and timeouts.
-- Alert: during trading hours, **no new batch for 3 min** ⇒ email, from Cloud Monitoring outside the collector's machine (ADR-0030; replaces a `healthcheck.py` on the machine, which could not mail while its network is cut).
+- Alert: during trading hours, **no new batch for 3 min** ⇒ email, from Cloud Monitoring outside the collector's machine, watching a custom metric the uploader writes per batch (ADR-0030, ADR-0032; replaces a `healthcheck.py` on the machine, which could not mail while its network is cut).
 - `infra/systemd/vnmarket-collector.service` + `.timer`: restart on failure; start **08:55**, stop **15:05**, Mon-Fri; systemd sandboxing (§14.4).
 - Holiday calendar from seed `trading_calendar`, **copied once** from the main repo with provenance. No row for today ⇒ **run anyway** (a missed real session is lost forever; an unnecessary run costs one warning).
 - Deployment: the VM checks out **exactly one tag** (D17) via `infra/deploy.sh <tag>`.

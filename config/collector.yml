@@ -1,6 +1,15 @@
 # Stream collector settings. No constant lives in Python code (spec D-rules, rule 6).
 batch_seconds: 60            # flush one parquet batch per minute (spec §5 latency budget)
 stale_alert_minutes: 3       # no new batch for this long during a session => alert (S1.4, ADR-0030)
+alert:                       # S1.4 (ADR-0032); Terraform reads this block - one place
+  # Vietnam-time windows in which a missing batch alerts: continuous trading with a few
+  # minutes' grace after each start (the opening and the lunch restart may be quiet; S1.6
+  # measures it). Lunch 11:30-13:00 and after 14:45 never alert. Monday-Friday only;
+  # confirmed holidays of dbt/seeds/holidays.csv are excluded in the query itself.
+  windows_local:
+    - ["09:05", "11:30"]
+    - ["13:03", "14:45"]
+  utc_offset_minutes: 420      # Vietnam has no daylight saving time
 connect_timeout_seconds: 30  # every outbound call has a timeout (rule 32)
 schedule:
   start_local: "08:55"       # Asia/Ho_Chi_Minh
@@ -17,3 +26,5 @@ upload:
   call_timeout_seconds: 60     # each upload and each metadata read
   drain_minutes: 10            # after --until, keep uploading what is left for this long
   load_table: raw_vps_stream.messages  # S2: each batch appended by a load job (ADR-0031)
+  metric_type: custom.googleapis.com/vnmarket/stream_batches_loaded  # S1.4 alert (ADR-0032)
+  metric_min_seconds: 10       # Cloud Monitoring takes one point per series every 5 s at most
