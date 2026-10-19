@@ -10,6 +10,10 @@ test-paths: ["tests"]
 target-path: target
 clean-targets: ["target", "dbt_packages"]
 
+# BI plan B2: after each prod invocation, record its as_of and test outcome (macro docs).
+on-run-end:
+  - "{{ record_build_status(results) }}"
+
 flags:
   send_anonymous_usage_stats: false  # no telemetry from this project
 
@@ -78,6 +82,17 @@ vars:
   # grid, so two grid steps is the rounding allowance; the odd ones deviate by 380-1,912 VND.
   # The noise bound separates the 0.1% flip-flops (TDM, TA9, HAT, HMH) from real moves.
   # With these: 970 same_close, 357 rescale, 8 noise, 10 other.
+  # Indicators for the BI marts (docs/knowledge/indicators.md §2 and flows.md §4): simple
+  # moving averages over non-stale sessions including the current one, NULL in warm-up;
+  # a 52-week high / low over 250 non-stale sessions (v1's sessions-per-year convention).
+  ma_short_rows: 20
+  ma_medium_rows: 50
+  ma_long_rows: 200
+  high_low_rows: 250
+  top_turnover_symbols: 10     # flows.md §4 top10_value_share
+  build_status_dataset: marts_daily  # where record_build_status appends (prod only)
+  bi_check_sessions: 60        # sessions assert_moving_average_point_in_time recomputes
+
   revision_rescale_min_coverage: 0.99
   revision_rescale_max_deviation_vnd: 20
   revision_noise_max_move: 0.005
