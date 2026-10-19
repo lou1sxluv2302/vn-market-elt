@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- BI marts for the end-of-day report: `int_prices__indicators` (return against the previous
+  close; SMA 20 / 50 / 200 and 52-week high / low over non-stale sessions, NULL in warm-up),
+  `fct_symbol_session_daily`, `fct_market_breadth_daily` (flows.md §4 counts; no ceiling /
+  floor on adjusted prices), `fct_market_flow_daily`, `fct_universe_summary_daily`,
+  `dim_trading_period` (`session_count`, `is_period_complete`); `fct_build_status` written
+  by an `on-run-end` hook after each prod invocation; `tools/build_pbi_theme.py` (Power BI
+  theme from `config/palette.yml`); runbook `bi-report.md`. Unit tests with exact answers;
+  recount tests and planted faults for look-ahead, stale rows and survivorship.
 - S0 local probe report (#32): `docs/reports/s0-feed-probe.md` - 30 minutes of a live
   session, aggregates only; the gate's inputs and the sizing for Q6.
 - S1.4 stale-feed alert (#41): the uploader writes one point of a custom metric per

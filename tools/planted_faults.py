@@ -389,11 +389,23 @@ CAL = "models/marts/daily/dim_trading_calendar.sql"
 SEC = "models/marts/daily/dim_security.sql"
 CHOSEN = "models/intermediate/int_prices__chosen_source.sql"
 STG = "models/staging/stg_vnstock__ohlcv_daily.sql"
+IND = "models/intermediate/int_prices__indicators.sql"
+SYMSESS = "models/marts/daily/fct_symbol_session_daily.sql"
+BREADTH = "models/marts/daily/fct_market_breadth_daily.sql"
+FLOW = "models/marts/daily/fct_market_flow_daily.sql"
+USUM = "models/marts/daily/fct_universe_summary_daily.sql"
+PERIOD = "models/marts/daily/dim_trading_period.sql"
 GRAIN = {
     "fct": "unique_combination_fct_price_daily_symbol__trade_date",
     "liq": "unique_combination_fct_liquidity_daily_symbol__trade_date",
     "uni": "unique_combination_fct_universe_daily_symbol__trade_date",
 }
+BI_NOT_EMPTY = [
+    "not_empty_fct_symbol_session_daily_",
+    "not_empty_fct_market_breadth_daily_",
+    "not_empty_fct_market_flow_daily_",
+    "not_empty_fct_universe_summary_daily_",
+]
 NOT_EMPTY = [
     "not_empty_stg_vnstock__ohlcv_daily_",
     "not_empty_dim_security_",
@@ -414,9 +426,15 @@ AS_OF = {
 FAULTS = [
     Fault(
         "empty_raw",
-        "a load that wrote nothing (echoes: every model below raw is empty too)",
+        "a load that wrote nothing (echoes: every model below raw is empty too; with no observed "
+        "session the periods have no as-of, so is_period_complete is null)",
         {
-            **fail(*NOT_EMPTY, "assert_last_session_has_enough_symbols"),
+            **fail(
+                *NOT_EMPTY,
+                *BI_NOT_EMPTY,
+                "assert_last_session_has_enough_symbols",
+                "not_null_dim_trading_period_is_period_complete",
+            ),
             **warn(
                 "assert_universe_covers_falling_markets",
                 "assert_watched_symbols_have_every_session",
@@ -434,12 +452,14 @@ FAULTS = [
             "not_empty_fct_foreign_flow_daily_",
             "not_empty_fct_prop_flow_daily_",
             "not_empty_fct_index_daily_",
+            "not_empty_fct_market_flow_daily_",
         ),
         snapshots=lambda tables: dict.fromkeys(tables, []),
     ),
     Fault(
         "older_snapshots_kept",
-        "the newest-snapshot filter lost in staging (echoes: the flow and index marts)",
+        "the newest-snapshot filter lost in staging (echoes: the flow and index marts, and the "
+        "symbol fact that joins foreign flow)",
         fail(
             "unique_combination_stg_vnstock__foreign_trade_symbol__trade_date",
             "unique_combination_stg_vnstock__prop_trade_symbol__trade_date",
@@ -447,6 +467,7 @@ FAULTS = [
             "unique_combination_fct_foreign_flow_daily_symbol__trade_date",
             "unique_combination_fct_prop_flow_daily_symbol__trade_date",
             "unique_combination_fct_index_daily_index_code__trade_date",
+            "unique_combination_fct_symbol_session_daily_symbol__trade_date",
         ),
         mutants=tuple(
             Mutant(
@@ -522,13 +543,19 @@ FAULTS = [
     Fault(
         "duplicate_band_row",
         "a band row added twice (echoes: the band join doubles the "
-        "HNX price rows, so a symbol's first row gains a 'previous' row for ADV)",
+        "HNX price rows, so a symbol's first row gains a 'previous' row for ADV; the "
+        "indicators and the symbol fact inherit the doubled rows, the breadth recount and the "
+        "MA recount see them)",
         fail(
             "unique_combination_price_band_exchange__band_case__effective_from",
             GRAIN["fct"],
             GRAIN["liq"],
             GRAIN["uni"],
             "assert_adv_excludes_current_row",
+            "unique_combination_int_prices__indicators_symbol__trade_date",
+            "unique_combination_fct_symbol_session_daily_symbol__trade_date",
+            "assert_breadth_counts_only_active_rows",
+            "assert_moving_average_point_in_time",
         ),
         seed_edits=(
             (
@@ -841,6 +868,7 @@ FAULTS = [
             "not_empty_fct_price_daily_",
             "not_empty_fct_liquidity_daily_",
             "not_empty_fct_universe_daily_",
+            *BI_NOT_EMPTY,
             "assert_last_session_has_enough_symbols",
         )
         | warn("assert_universe_covers_falling_markets"),
@@ -855,6 +883,119 @@ FAULTS = [
             "liquidity_tier_medium_vnd": 3 * 10**13,
             "liquidity_tier_low_vnd": 10**13,
         },
+    ),
+    # BI marts (BI plan B1): one fault per mechanism the plan named, then their grains.
+    Fault(
+        "moving_average_looks_ahead",
+        "MA20 averaged over the next sessions instead of the previous ones",
+        fail("assert_moving_average_point_in_time"),
+        mutants=(
+            Mutant(
+                IND,
+                "rows between {{ var('ma_short_rows') - 1 }} preceding and current row",
+                "rows between current row and {{ var('ma_short_rows') - 1 }} following",
+            ),
+        ),
+    ),
+    Fault(
+        "breadth_counts_stale_rows",
+        "breadth counts stale sessions (volume 0, price copied) as active",
+        fail("assert_breadth_counts_only_active_rows"),
+        mutants=(Mutant(BREADTH, "where is_in_scope and not is_stale\n)", "where is_in_scope\n)"),),
+    ),
+    Fault(
+        "universe_count_not_point_in_time",
+        "the universe size counts every listed symbol, not the session's flag",
+        fail("assert_universe_summary_matches_flags"),
+        mutants=(
+            Mutant(
+                USUM,
+                "sum(case when is_in_universe then 1 else 0 end) as universe_count",
+                "count(*) as universe_count",
+            ),
+        ),
+    ),
+    Fault(
+        "breadth_unchanged_counts_every_row",
+        "unchanged counted as every active row, so the parts exceed the whole",
+        fail("breadth_parts_within_active"),
+        mutants=(
+            Mutant(
+                BREADTH,
+                "sum(case when return_1d_ratio = 0 then 1 else 0 end) as unchanged_count",
+                "count(*) as unchanged_count",
+            ),
+        ),
+    ),
+    Fault(
+        "above_ma_counts_warm_up_rows",
+        "a symbol without MA50 yet (warm-up) counted as above it",
+        fail("breadth_above_within_eligible"),
+        mutants=(
+            Mutant(
+                BREADTH,
+                "sum(case when close_vnd > ma50_vnd then 1 else 0 end) as above_ma50_count",
+                "sum(case when close_vnd > coalesce(ma50_vnd, 0) then 1 else 0 end)"
+                " as above_ma50_count",
+            ),
+        ),
+    ),
+    Fault(
+        "indicator_rows_duplicated",
+        "every price row twice in the indicators (echoes: the symbol fact's grain and the "
+        "breadth recount, both built on it)",
+        fail(
+            "unique_combination_int_prices__indicators_symbol__trade_date",
+            "unique_combination_fct_symbol_session_daily_symbol__trade_date",
+            "assert_breadth_counts_only_active_rows",
+        ),
+        mutants=(
+            Mutant(
+                IND,
+                "from prices as p\n",
+                "from (select * from prices union all select * from prices) as p\n",
+            ),
+        ),
+    ),
+    Fault(
+        "bi_joins_and_groups_lose_a_key",
+        "each BI mart joins or groups without its date or type key (echo: the universe "
+        "recount sees partial counts per row)",
+        fail(
+            "unique_combination_fct_symbol_session_daily_symbol__trade_date",
+            "unique_combination_fct_market_breadth_daily_exchange__trade_date",
+            "unique_combination_fct_market_flow_daily_exchange__trade_date",
+            "unique_combination_fct_universe_summary_daily_exchange__trade_date",
+            "unique_combination_dim_trading_period_period_type__period_id",
+            "assert_universe_summary_matches_flags",
+        ),
+        mutants=(
+            Mutant(
+                SYMSESS,
+                "    on f.symbol = i.symbol and f.trade_date = i.trade_date",
+                "    on f.symbol = i.symbol",
+            ),
+            Mutant(
+                BREADTH,
+                "    on t.exchange = c.exchange and t.trade_date = c.trade_date",
+                "    on t.exchange = c.exchange",
+            ),
+            Mutant(
+                FLOW,
+                "    on r.exchange = f.exchange and r.trade_date = f.trade_date",
+                "    on r.exchange = f.exchange",
+            ),
+            Mutant(
+                USUM,
+                "group by exchange, trade_date\n",
+                "group by exchange, trade_date, liquidity_tier\n",
+            ),
+            Mutant(
+                PERIOD,
+                "group by p.period_type, p.period_id\n",
+                "group by p.period_type, p.period_id, p.is_trading_day\n",
+            ),
+        ),
     ),
 ]
 

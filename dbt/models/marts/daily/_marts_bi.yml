@@ -1,0 +1,183 @@
+version: 2
+
+# BI marts (BI plan B1-B2, private plan 2026-10-18): the tables the Power BI report imports.
+
+models:
+  - name: int_prices__indicators
+    description: >
+      Per symbol and session: return against the previous session's close, and SMA 20 / 50 /
+      200 and 52-week high / low over non-stale sessions (NULL in warm-up and on stale rows).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, trade_date]
+
+  - name: fct_symbol_session_daily
+    description: The symbol-level fact the report imports - prices, indicators, liquidity, universe, foreign flow.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, trade_date]
+      - not_empty
+
+  - name: fct_market_breadth_daily
+    description: Breadth counts per exchange and session (flows.md §4); ratios are built in the report.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [exchange, trade_date]
+      - not_empty
+      - row_condition:
+          name: breadth_parts_within_active
+          arguments:
+            condition: advancing_count + declining_count + unchanged_count <= active_symbol_count
+      - row_condition:
+          name: breadth_above_within_eligible
+          arguments:
+            condition: above_ma50_count <= ma50_eligible_count and above_ma200_count <= ma200_eligible_count
+
+  - name: fct_market_flow_daily
+    description: Foreign and proprietary flow per exchange and session; the split only where valid.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [exchange, trade_date]
+      - not_empty
+
+  - name: fct_universe_summary_daily
+    description: Point-in-time universe size, tiers, entries and exits per exchange and session.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [exchange, trade_date]
+      - not_empty
+
+  - name: dim_trading_period
+    description: Weeks, months and years with their session count and whether they are complete.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [period_type, period_id]
+    columns:
+      - name: session_count
+        data_tests: [not_null]
+      - name: is_period_complete
+        data_tests: [not_null]
+
+unit_tests:
+  - name: indicators_moving_averages_and_52_week_flags
+    description: >
+      Windows shrunk to 2 / 3 / 4 sessions and a 3-session high / low so the answers fit in six
+      rows; closes chosen so every mean is exact. The stale row (session 3) gets nothing and
+      is skipped by every window: session 4's 2-session mean is (200 + 300) / 2, not
+      (200 + 200) / 2. Warm-up is NULL, never a partial mean.
+    model: int_prices__indicators
+    overrides:
+      vars: {ma_short_rows: 2, ma_medium_rows: 3, ma_long_rows: 4, high_low_rows: 3}
+    given:
+      - input: ref('fct_price_daily')
+        rows:
+          - {symbol: A, trade_date: 2026-07-01, session_seq: 1, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100}
+          - {symbol: A, trade_date: 2026-07-02, session_seq: 2, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 200}
+          - {symbol: A, trade_date: 2026-07-03, session_seq: 3, exchange: HOSE, is_in_scope: true, is_stale: true, close_vnd: 200}
+          - {symbol: A, trade_date: 2026-07-06, session_seq: 4, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 300}
+          - {symbol: A, trade_date: 2026-07-07, session_seq: 5, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 400}
+          - {symbol: A, trade_date: 2026-07-08, session_seq: 6, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 200}
+    expect:
+      rows:
+        - {symbol: A, trade_date: 2026-07-01, ma20_vnd: null, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+        - {symbol: A, trade_date: 2026-07-02, ma20_vnd: 150, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+        - {symbol: A, trade_date: 2026-07-03, ma20_vnd: null, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+        - {symbol: A, trade_date: 2026-07-06, ma20_vnd: 250, ma50_vnd: 200, ma200_vnd: null, is_new_high_52w: true, is_new_low_52w: false}
+        - {symbol: A, trade_date: 2026-07-07, ma20_vnd: 350, ma50_vnd: 300, ma200_vnd: 250, is_new_high_52w: true, is_new_low_52w: false}
+        - {symbol: A, trade_date: 2026-07-08, ma20_vnd: 300, ma50_vnd: 300, ma200_vnd: 275, is_new_high_52w: false, is_new_low_52w: true}
+
+  - name: indicators_return_against_previous_close
+    description: >
+      The reference is the previous session's close, stale or not (a stale row repeats the
+      last traded close). A stale row has no return; the first row has none.
+    model: int_prices__indicators
+    given:
+      - input: ref('fct_price_daily')
+        rows:
+          - {symbol: A, trade_date: 2026-07-01, session_seq: 1, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100}
+          - {symbol: A, trade_date: 2026-07-02, session_seq: 2, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 200}
+          - {symbol: A, trade_date: 2026-07-03, session_seq: 3, exchange: HOSE, is_in_scope: true, is_stale: true, close_vnd: 200}
+          - {symbol: A, trade_date: 2026-07-06, session_seq: 4, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100}
+          - {symbol: A, trade_date: 2026-07-07, session_seq: 5, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100}
+    expect:
+      rows:
+        - {symbol: A, trade_date: 2026-07-01, reference_vnd: null, return_1d_ratio: null}
+        - {symbol: A, trade_date: 2026-07-02, reference_vnd: 100, return_1d_ratio: 1.0}
+        - {symbol: A, trade_date: 2026-07-03, reference_vnd: 200, return_1d_ratio: null}
+        - {symbol: A, trade_date: 2026-07-06, reference_vnd: 200, return_1d_ratio: -0.5}
+        - {symbol: A, trade_date: 2026-07-07, reference_vnd: 100, return_1d_ratio: 0.0}
+
+  - name: breadth_counts_active_rows_only
+    description: >
+      Session 1: A up and above its MA50, B down, below MA50, above MA200, C unchanged with no
+      MA yet; D stale and E out of scope count nowhere, not in turnover either. Top-2
+      turnover = A + B. Session 2: A up again, so the A/D line goes 0 → 1.
+    model: fct_market_breadth_daily
+    overrides:
+      vars: {top_turnover_symbols: 2}
+    given:
+      - input: ref('int_prices__indicators')
+        rows:
+          - {symbol: A, trade_date: 2026-07-01, session_seq: 1, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 200, return_1d_ratio: 0.5, ma50_vnd: 100, ma200_vnd: null, is_new_high_52w: true, is_new_low_52w: false}
+          - {symbol: B, trade_date: 2026-07-01, session_seq: 1, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100, return_1d_ratio: -0.5, ma50_vnd: 300, ma200_vnd: 50, is_new_high_52w: false, is_new_low_52w: true}
+          - {symbol: C, trade_date: 2026-07-01, session_seq: 1, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100, return_1d_ratio: 0.0, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+          - {symbol: D, trade_date: 2026-07-01, session_seq: 1, exchange: HOSE, is_in_scope: true, is_stale: true, close_vnd: 100, return_1d_ratio: null, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+          - {symbol: E, trade_date: 2026-07-01, session_seq: 1, exchange: HOSE, is_in_scope: false, is_stale: false, close_vnd: 100, return_1d_ratio: 0.5, ma50_vnd: 50, ma200_vnd: 50, is_new_high_52w: true, is_new_low_52w: false}
+          - {symbol: A, trade_date: 2026-07-02, session_seq: 2, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 300, return_1d_ratio: 0.5, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+      - input: ref('fct_price_daily')
+        rows:
+          - {symbol: A, trade_date: 2026-07-01, exchange: HOSE, is_in_scope: true, is_stale: false, turnover_vnd: 500}
+          - {symbol: B, trade_date: 2026-07-01, exchange: HOSE, is_in_scope: true, is_stale: false, turnover_vnd: 300}
+          - {symbol: C, trade_date: 2026-07-01, exchange: HOSE, is_in_scope: true, is_stale: false, turnover_vnd: 100}
+          - {symbol: D, trade_date: 2026-07-01, exchange: HOSE, is_in_scope: true, is_stale: true, turnover_vnd: 1000}
+          - {symbol: E, trade_date: 2026-07-01, exchange: HOSE, is_in_scope: false, is_stale: false, turnover_vnd: 2000}
+          - {symbol: A, trade_date: 2026-07-02, exchange: HOSE, is_in_scope: true, is_stale: false, turnover_vnd: 10}
+    expect:
+      rows:
+        - {exchange: HOSE, trade_date: 2026-07-01, active_symbol_count: 3, advancing_count: 1, declining_count: 1, unchanged_count: 1, ma50_eligible_count: 2, above_ma50_count: 1, ma200_eligible_count: 1, above_ma200_count: 1, high_low_eligible_count: 2, new_high_52w_count: 1, new_low_52w_count: 1, ad_line: 0, turnover_vnd: 900, top10_turnover_vnd: 800}
+        - {exchange: HOSE, trade_date: 2026-07-02, active_symbol_count: 1, advancing_count: 1, declining_count: 0, unchanged_count: 0, ma50_eligible_count: 0, above_ma50_count: 0, ma200_eligible_count: 0, above_ma200_count: 0, high_low_eligible_count: 0, new_high_52w_count: 0, new_low_52w_count: 0, ad_line: 1, turnover_vnd: 10, top10_turnover_vnd: 10}
+
+  - name: universe_summary_point_in_time
+    description: >
+      X is in on sessions 1-2 and out on 3; Y joins on 2. Each session counts the flag it had
+      then: an "ever in the universe" count would give 2 on session 1.
+    model: fct_universe_summary_daily
+    given:
+      - input: ref('fct_universe_daily')
+        rows:
+          - {symbol: X, exchange: HOSE, trade_date: 2026-07-01, session_seq: 1, liquidity_tier: HIGH, is_in_universe: true}
+          - {symbol: X, exchange: HOSE, trade_date: 2026-07-02, session_seq: 2, liquidity_tier: HIGH, is_in_universe: true}
+          - {symbol: X, exchange: HOSE, trade_date: 2026-07-03, session_seq: 3, liquidity_tier: null, is_in_universe: false}
+          - {symbol: Y, exchange: HOSE, trade_date: 2026-07-01, session_seq: 1, liquidity_tier: null, is_in_universe: false}
+          - {symbol: Y, exchange: HOSE, trade_date: 2026-07-02, session_seq: 2, liquidity_tier: LOW, is_in_universe: true}
+          - {symbol: Y, exchange: HOSE, trade_date: 2026-07-03, session_seq: 3, liquidity_tier: LOW, is_in_universe: true}
+    expect:
+      rows:
+        - {exchange: HOSE, trade_date: 2026-07-01, universe_count: 1, tier_high_count: 1, tier_low_count: 0, entered_count: 1, exited_count: 0}
+        - {exchange: HOSE, trade_date: 2026-07-02, universe_count: 2, tier_high_count: 1, tier_low_count: 1, entered_count: 1, exited_count: 0}
+        - {exchange: HOSE, trade_date: 2026-07-03, universe_count: 1, tier_high_count: 0, tier_low_count: 1, entered_count: 0, exited_count: 1}
+
+  - name: trading_periods_complete_only_when_ended
+    description: >
+      Observed sessions to Tuesday 2026-06-30, rule-based days after it: June is complete,
+      July and the week and year spanning both are not.
+    model: dim_trading_period
+    given:
+      - input: ref('dim_trading_calendar')
+        rows:
+          - {calendar_date: 2026-06-29, is_trading_day: true, calendar_source: observed, trading_week_id: 202627, trading_month_id: 202606, trading_year_id: 2026}
+          - {calendar_date: 2026-06-30, is_trading_day: true, calendar_source: observed, trading_week_id: 202627, trading_month_id: 202606, trading_year_id: 2026}
+          - {calendar_date: 2026-07-01, is_trading_day: true, calendar_source: rule, trading_week_id: 202627, trading_month_id: 202607, trading_year_id: 2026}
+          - {calendar_date: 2026-07-04, is_trading_day: false, calendar_source: rule, trading_week_id: 202627, trading_month_id: 202607, trading_year_id: 2026}
+    expect:
+      rows:
+        - {period_type: week, period_id: 202627, session_count: 3, is_period_complete: false}
+        - {period_type: month, period_id: 202606, session_count: 2, is_period_complete: true}
+        - {period_type: month, period_id: 202607, session_count: 1, is_period_complete: false}
+        - {period_type: year, period_id: 2026, session_count: 3, is_period_complete: false}
