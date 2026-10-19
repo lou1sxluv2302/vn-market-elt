@@ -49,9 +49,9 @@ variable "dev_table_expiration_days" {
 }
 
 variable "create_vm" {
-  description = "Create the collector VM, its network and the IAP firewall rule. Off until the S0 feed probe passes (approved plan, option A)."
+  description = "Create the collector VM, its network and the IAP firewall rule. On from S0.3b (2026-10-19): the local probe passed and a Linux licence slot is free; the VM probe is the cloud gate. The default lives here, not in tfvars, so local and CI plans agree."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "vm_disk_size_gb" {
