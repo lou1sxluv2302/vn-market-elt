@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- S0 local probe report (#32): `docs/reports/s0-feed-probe.md` - 30 minutes of a live
+  session, aggregates only; the gate's inputs and the sizing for Q6.
 - S1.4 stale-feed alert (#41): the uploader writes one point of a custom metric per
   loaded batch; a PromQL alert policy e-mails when none arrives for 3 minutes inside a
   trading window (windows in `config/collector.yml`, confirmed holidays from the seed),
