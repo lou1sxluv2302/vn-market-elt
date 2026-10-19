@@ -45,7 +45,8 @@ they become the source of progress and this list is retired.
 - [x] Research track (private repo) - features and PANIC labels, hypotheses registered then measured once, a walk-forward test; a forward journal runs every trading day from 2026-10-16. Inputs added here: flows and index history (#27, #28), `--datasets` for the daily reload (#30)
 - [ ] P4 (#34) - code merged (#35, ADR-0029): vendor rewrites classified (`fct_price_revision`), daily reconciliation logged; done at 10 consecutive passing sessions (1 of 10 on 2026-10-16)
 - [x] S0.1 feed probe and report (#33); a one-minute connection check connected (2026-10-16)
-- [ ] S0.2 local probe, 30 minutes of a live session (2026-10-19, 09:30) · S0.3-S0.4 the cloud gate
+- [x] S0.2 local probe, 30 minutes of a live session (2026-10-19): 3,301 msgs/min, 0.17 MiB/min as parquet, 0 disconnects, ~1 s latency, 183 MB RAM; reference / ceiling / floor and foreign flow per symbol present - `docs/reports/s0-feed-probe.md`
+- [ ] S0.3-S0.4 the cloud gate: the same probe on the VM
 - [x] S1.1-S1.3 collector and verified uploader (#37, ADR-0030)
 - [ ] S1.4 outside alert (ADR-0032): metric and policy written, tried on the live metric, policy applied and checked 2026-10-17; planted network cut in a live session · S1.5-S1.6 deployment, 5 sessions - after the gate
 - [x] S2.1-S2.3 load exactly once from the verified file, `tools/reconcile_stream.py` (#39, ADR-0031); table and owner impersonation applied and checked 2026-10-17
