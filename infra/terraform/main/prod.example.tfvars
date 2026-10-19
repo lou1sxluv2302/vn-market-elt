@@ -2,4 +2,3 @@
 project_id  = "<your-gcp-project-id>"
 alert_email = "<your-alert-address>"
 owner_email = "<your-google-account>"
-create_vm   = false
