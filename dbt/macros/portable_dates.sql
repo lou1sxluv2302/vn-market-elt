@@ -44,3 +44,17 @@
 {% macro default__iso_week_id(column) %}
     (extract(isoyear from {{ column }}) * 100 + extract(week from {{ column }}))
 {% endmacro %}
+
+{# The exact median of `column` within `partition_by`, as a window (an aggregate median is
+   approximate or absent on BigQuery). Wrap with max() in a later group by. #}
+{% macro median_over(column, partition_by) %}
+    {{ return(adapter.dispatch('median_over', 'vnmarket')(column, partition_by)) }}
+{% endmacro %}
+
+{% macro bigquery__median_over(column, partition_by) %}
+    percentile_cont({{ column }}, 0.5) over (partition by {{ partition_by }})
+{% endmacro %}
+
+{% macro default__median_over(column, partition_by) %}
+    median({{ column }}) over (partition by {{ partition_by }})
+{% endmacro %}

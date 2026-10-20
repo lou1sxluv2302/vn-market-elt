@@ -395,6 +395,7 @@ BREADTH = "models/marts/daily/fct_market_breadth_daily.sql"
 FLOW = "models/marts/daily/fct_market_flow_daily.sql"
 USUM = "models/marts/daily/fct_universe_summary_daily.sql"
 PERIOD = "models/marts/daily/dim_trading_period.sql"
+SECTOR = "models/marts/daily/fct_sector_daily.sql"
 GRAIN = {
     "fct": "unique_combination_fct_price_daily_symbol__trade_date",
     "liq": "unique_combination_fct_liquidity_daily_symbol__trade_date",
@@ -405,6 +406,7 @@ BI_NOT_EMPTY = [
     "not_empty_fct_market_breadth_daily_",
     "not_empty_fct_market_flow_daily_",
     "not_empty_fct_universe_summary_daily_",
+    "not_empty_fct_sector_daily_",
 ]
 NOT_EMPTY = [
     "not_empty_stg_vnstock__ohlcv_daily_",
@@ -461,6 +463,7 @@ FAULTS = [
         "the newest-snapshot filter lost in staging (echoes: the flow and index marts, and the "
         "symbol fact that joins foreign flow)",
         fail(
+            "assert_sector_counts_match_breadth",
             "unique_combination_stg_vnstock__foreign_trade_symbol__trade_date",
             "unique_combination_stg_vnstock__prop_trade_symbol__trade_date",
             "unique_combination_stg_vnstock__index_daily_index_code__trade_date",
@@ -547,6 +550,7 @@ FAULTS = [
         "indicators and the symbol fact inherit the doubled rows, the breadth recount and the "
         "MA recount see them)",
         fail(
+            "assert_sector_counts_match_breadth",
             "unique_combination_price_band_exchange__band_case__effective_from",
             GRAIN["fct"],
             GRAIN["liq"],
@@ -569,6 +573,7 @@ FAULTS = [
         "an announced move entered twice (echoes: every HNX symbol's periods doubled, "
         "so its open period too and dim_symbol's one row per symbol)",
         fail(
+            "assert_sector_counts_match_breadth",
             "unique_combination_exchange_changes_from_exchange__effective_from",
             "unique_combination_dim_security_symbol__effective_from",
             "unique_dim_symbol_symbol",
@@ -637,6 +642,7 @@ FAULTS = [
         "joining both periods are cut back to one by the tick rank; echo: a delisted "
         "symbol's two open periods give dim_symbol two rows)",
         fail(
+            "assert_sector_counts_match_breadth",
             "unique_combination_dim_security_symbol__effective_from",
             "unique_dim_symbol_symbol",
         ),
@@ -906,7 +912,7 @@ FAULTS = [
     Fault(
         "breadth_counts_stale_rows",
         "breadth counts stale sessions (volume 0, price copied) as active",
-        fail("assert_breadth_counts_only_active_rows"),
+        fail("assert_sector_counts_match_breadth", "assert_breadth_counts_only_active_rows"),
         mutants=(Mutant(BREADTH, "where is_in_scope and not is_stale\n)", "where is_in_scope\n)"),),
     ),
     Fault(
@@ -968,11 +974,13 @@ FAULTS = [
         "each BI mart joins or groups without its date or type key (echo: the universe "
         "recount sees partial counts per row)",
         fail(
+            "assert_sector_counts_match_breadth",
             "unique_combination_fct_symbol_session_daily_symbol__trade_date",
             "unique_combination_fct_market_breadth_daily_exchange__trade_date",
             "unique_combination_fct_market_flow_daily_exchange__trade_date",
             "unique_combination_fct_universe_summary_daily_exchange__trade_date",
             "unique_combination_dim_trading_period_period_type__period_id",
+            "unique_combination_fct_sector_daily_supersector_code__trade_date",
             "assert_universe_summary_matches_flags",
         ),
         mutants=(
@@ -1000,6 +1008,48 @@ FAULTS = [
                 PERIOD,
                 "group by p.period_type, p.period_id\n",
                 "group by p.period_type, p.period_id, p.is_trading_day\n",
+            ),
+            Mutant(
+                SECTOR,
+                "    group by supersector_code, trade_date\n",
+                "    group by supersector_code, trade_date, return_1d_ratio > 0\n",
+            ),
+        ),
+    ),
+    Fault(
+        "sector_counts_stale_rows",
+        "the sector page counts stale sessions (volume 0, price copied) as active",
+        fail("assert_sector_counts_match_breadth"),
+        mutants=(
+            Mutant(
+                SECTOR,
+                "    where s.is_in_scope and not s.is_stale\n",
+                "    where s.is_in_scope\n",
+            ),
+        ),
+    ),
+    Fault(
+        "sector_advancing_counts_every_row",
+        "advancing counted as every active row, so the parts exceed the whole",
+        fail("sector_parts_within_active"),
+        mutants=(
+            Mutant(
+                SECTOR,
+                "sum(case when return_1d_ratio > 0 then 1 else 0 end) as advancing_count",
+                "count(*) as advancing_count",
+            ),
+        ),
+    ),
+    Fault(
+        "sector_above_ma_counts_warm_up_rows",
+        "a symbol without MA50 yet (warm-up) counted as above it on the sector page",
+        fail("sector_above_within_eligible"),
+        mutants=(
+            Mutant(
+                SECTOR,
+                "sum(case when close_vnd > ma50_vnd then 1 else 0 end) as above_ma50_count",
+                "sum(case when close_vnd > coalesce(ma50_vnd, 0) then 1 else 0 end)"
+                " as above_ma50_count",
             ),
         ),
     ),

@@ -72,6 +72,25 @@ models:
       - name: is_period_complete
         data_tests: [not_null]
 
+  - name: fct_sector_daily
+    description: >
+      Supersector (ICB level 2) per session over in-scope, non-stale rows, both exchanges;
+      counts and sums for the report's ratios, the median 1D return and an equal-weight
+      index. Classification is today's, not point in time.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [supersector_code, trade_date]
+      - not_empty
+      - row_condition:
+          name: sector_parts_within_active
+          arguments:
+            condition: advancing_count + declining_count <= active_symbol_count
+      - row_condition:
+          name: sector_above_within_eligible
+          arguments:
+            condition: above_ma50_count <= ma50_eligible_count and above_ma200_count <= ma200_eligible_count
+
 unit_tests:
   - name: indicators_moving_averages_and_52_week_flags
     description: >
@@ -214,3 +233,29 @@ unit_tests:
       rows:
         - {symbol: AAA, exchange: HOSE, industry_en: Basic Materials, supersector_vi: Hóa chất, supersector_en: Chemicals}
         - {symbol: BBB, exchange: HNX, industry_en: Unclassified, supersector_vi: Chưa phân ngành, supersector_en: Unclassified}
+
+  - name: sector_counts_median_and_index
+    description: >
+      A and B are banks, C has no classification, D is stale. Session 1: banks 0.5 and
+      -0.25 give mean and median 0.125 and turnover x return 100 x 0.5 + 300 x -0.25 = -25;
+      C lands in 'none'; D is not counted. Session 2: banks 0.5 and 0 (one unchanged).
+    model: fct_sector_daily
+    given:
+      - input: ref('fct_symbol_session_daily')
+        rows:
+          - {symbol: A, trade_date: 2026-07-01, session_seq: 1, is_in_scope: true, is_stale: false, return_1d_ratio: 0.5, close_vnd: 200, ma50_vnd: 100, ma200_vnd: null, is_new_high_52w: true, is_new_low_52w: false, turnover_vnd: 100, foreign_net_total_value_vnd: 10}
+          - {symbol: B, trade_date: 2026-07-01, session_seq: 1, is_in_scope: true, is_stale: false, return_1d_ratio: -0.25, close_vnd: 100, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: false, is_new_low_52w: false, turnover_vnd: 300, foreign_net_total_value_vnd: -4}
+          - {symbol: C, trade_date: 2026-07-01, session_seq: 1, is_in_scope: true, is_stale: false, return_1d_ratio: 0.5, close_vnd: 100, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null, turnover_vnd: 50, foreign_net_total_value_vnd: null}
+          - {symbol: D, trade_date: 2026-07-01, session_seq: 1, is_in_scope: true, is_stale: true, return_1d_ratio: 0.0, close_vnd: 100, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null, turnover_vnd: 0, foreign_net_total_value_vnd: null}
+          - {symbol: A, trade_date: 2026-07-02, session_seq: 2, is_in_scope: true, is_stale: false, return_1d_ratio: 0.5, close_vnd: 300, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: true, is_new_low_52w: false, turnover_vnd: 100, foreign_net_total_value_vnd: 0}
+          - {symbol: B, trade_date: 2026-07-02, session_seq: 2, is_in_scope: true, is_stale: false, return_1d_ratio: 0.0, close_vnd: 100, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: false, is_new_low_52w: false, turnover_vnd: 100, foreign_net_total_value_vnd: 0}
+      - input: ref('dim_symbol')
+        rows:
+          - {symbol: A, supersector_code: '8300', supersector_vi: Ngân hàng, supersector_en: Banks}
+          - {symbol: B, supersector_code: '8300', supersector_vi: Ngân hàng, supersector_en: Banks}
+          - {symbol: D, supersector_code: '8300', supersector_vi: Ngân hàng, supersector_en: Banks}
+    expect:
+      rows:
+        - {supersector_code: '8300', trade_date: 2026-07-01, active_symbol_count: 2, advancing_count: 1, declining_count: 1, mean_return_1d_ratio: 0.125, median_return_1d_ratio: 0.125, turnover_vnd: 400, turnover_x_return_vnd: -25, ma50_eligible_count: 1, above_ma50_count: 1, new_high_52w_count: 1, foreign_net_value_vnd: 6}
+        - {supersector_code: none, trade_date: 2026-07-01, active_symbol_count: 1, advancing_count: 1, declining_count: 0, mean_return_1d_ratio: 0.5, median_return_1d_ratio: 0.5, turnover_vnd: 50, turnover_x_return_vnd: 25, ma50_eligible_count: 0, above_ma50_count: 0, new_high_52w_count: 0, foreign_net_value_vnd: null}
+        - {supersector_code: '8300', trade_date: 2026-07-02, active_symbol_count: 2, advancing_count: 1, declining_count: 0, mean_return_1d_ratio: 0.25, median_return_1d_ratio: 0.25, turnover_vnd: 200, turnover_x_return_vnd: 50, ma50_eligible_count: 0, above_ma50_count: 0, new_high_52w_count: 1, foreign_net_value_vnd: 0}
