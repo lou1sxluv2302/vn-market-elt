@@ -33,6 +33,18 @@ v1_history:
     partition_by_month_of: session_date
     cluster_by: [symbol]
 
+  # Fundamentals: v1's quarterly / yearly financial statements (long form, one source: VCI) and
+  # its charter-capital history, each ONE file that v1's manual extractor rewrites whole: the
+  # flows' snapshot rule. Clustered by symbol, not partitioned: a statement is keyed by a fiscal
+  # period, not a session. Measured 2026-10-21: fundamental_statement 6,092,666 rows (27 MB
+  # parquet, written 2026-08-22, 2018 to 2026 Q2), capital_history 5,819 rows. Statements carry
+  # no publication date; v1's `available_from_date` is the statutory deadline + 5 days, and
+  # dbt recomputes it from a seed and reconciles the two (docs/knowledge/data-sources.md).
+  fundamentals:
+    source_dir: vnstock_data
+    files: {fundamental_statement: fundamental_statement, capital_history: capital_history}  # file: table
+    cluster_by: [symbol]
+
   # Index history: v1 keeps it only in its DuckDB table (no parquet log), opened read-only.
   # Loaded as a snapshot whose hash covers the table sorted by its key.
   index:

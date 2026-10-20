@@ -276,6 +276,48 @@ def flip_late_foreign_net(tables: dict[str, Rows]) -> dict[str, Rows]:
     return {**tables, "foreign_trade_daily": flipped}
 
 
+FUNDAMENTAL_DAYS = {1: 35, 2: 65, 3: 35, 4: 95}  # the seed's deadline + buffer per quarter
+QUARTER_END = {1: (3, 31), 2: (6, 30), 3: (9, 30), 4: (12, 31)}
+
+
+def fundamental_rows() -> Rows:
+    """Profit and revenue of two symbols for 2025 Q1 to 2026 Q1, in an older and a newer
+    snapshot. v1's own availability date follows the seed in the newer snapshot and is one day
+    later in the older one, so a staging model that keeps both disagrees with the seed."""
+    rows: Rows = []
+    for at, shift in ((OLDER_SNAPSHOT_AT, 1), (PULLED_AT, 0)):
+        for symbol in ("S01", "S02"):
+            for year, quarter in ((2025, 1), (2025, 2), (2025, 3), (2025, 4), (2026, 1)):
+                end = dt.date(year, *QUARTER_END[quarter])
+                usable = end + dt.timedelta(days=FUNDAMENTAL_DAYS[quarter] + shift)
+                for key, value in (
+                    ("Lợi nhuận sau thuế (XI-XII)", 1.0e11),
+                    ("Doanh thu thuần HĐKD BH (10=03+04)", 1.0e12),
+                ):
+                    rows.append(
+                        {
+                            "symbol": symbol,
+                            "statement": "income_statement",
+                            "item": key,
+                            "item_key": key,
+                            "period_type": "quarter",
+                            "period_label": f"{year}-Q{quarter}",
+                            "year": year,
+                            "quarter": float(quarter),
+                            "value": value,
+                            "is_meta": False,
+                            "period_end_date": end,
+                            "available_from_date": usable,
+                            "item_all_zero": False,
+                            "item_all_null": False,
+                            "src": "VCI",
+                            "_source_sha256": f"sha-{at}",
+                            "_loaded_at": at,
+                        }
+                    )
+    return rows
+
+
 def snapshot_tables() -> dict[str, Rows]:
     """Flow and index snapshots: an older and a newer one, so staging must pick the newest."""
     days = SESSIONS[:5]
@@ -292,6 +334,7 @@ def snapshot_tables() -> dict[str, Rows]:
             flow_row(prefix, "S01", BEFORE_SPLIT_CUTOFF, 5_000_000.0, at)
             for at in (OLDER_SNAPSHOT_AT, PULLED_AT)
         ]
+    tables["fundamental_statement"] = fundamental_rows()
     tables["index_daily"] = [
         {
             "index_code": code,
@@ -425,6 +468,7 @@ SECTOR = "models/marts/daily/fct_sector_daily.sql"
 STREAK = "models/marts/daily/fct_foreign_streak_daily.sql"
 CONC = "models/marts/daily/fct_market_concentration_daily.sql"
 TENURE = "models/marts/daily/fct_universe_tenure_daily.sql"
+FUNDAMENTAL = "models/marts/daily/fct_fundamental_quarterly.sql"
 GRAIN = {
     "fct": "unique_combination_fct_price_daily_symbol__trade_date",
     "liq": "unique_combination_fct_liquidity_daily_symbol__trade_date",
@@ -477,8 +521,9 @@ FAULTS = [
     ),
     Fault(
         "empty_flow_and_index_snapshots",
-        "flow and index loads that wrote nothing",
+        "flow, index and financial-statement loads that wrote nothing",
         fail(
+            "not_empty_fct_fundamental_quarterly_",
             "not_empty_stg_vnstock__foreign_trade_",
             "not_empty_stg_vnstock__prop_trade_",
             "not_empty_stg_vnstock__index_daily_",
@@ -492,8 +537,9 @@ FAULTS = [
     ),
     Fault(
         "older_snapshots_kept",
-        "the newest-snapshot filter lost in staging (echoes: the flow and index marts, and the "
-        "symbol fact that joins foreign flow)",
+        "the newest-snapshot filter lost in staging (echoes: the flow and index marts, the "
+        "symbol fact that joins foreign flow, and the statements' availability date, which the "
+        "older snapshot has one day later)",
         fail(
             "unique_combination_fct_foreign_streak_daily_symbol__trade_date",
             "assert_sector_counts_match_breadth",
@@ -504,6 +550,7 @@ FAULTS = [
             "unique_combination_fct_prop_flow_daily_symbol__trade_date",
             "unique_combination_fct_index_daily_index_code__trade_date",
             "unique_combination_fct_symbol_session_daily_symbol__trade_date",
+            "assert_fundamental_availability_matches_v1",
         ),
         mutants=tuple(
             Mutant(
@@ -511,7 +558,7 @@ FAULTS = [
                 "where _loaded_at = (",
                 "where _loaded_at <= (",
             )
-            for name in ("foreign_trade", "prop_trade", "index_daily")
+            for name in ("foreign_trade", "prop_trade", "index_daily", "fundamental_statement")
         ),
     ),
     Fault(
@@ -1059,6 +1106,57 @@ FAULTS = [
                 SECTOR,
                 "    group by supersector_code, trade_date\n",
                 "    group by supersector_code, trade_date, return_1d_ratio > 0\n",
+            ),
+        ),
+    ),
+    Fault(
+        "fundamental_half_year_deadline_unreviewed",
+        "Q2 usable at the 45-day deadline of an unreviewed report, though the source's figures "
+        "are the reviewed ones (60 days): every Q2 date moves earlier than v1's",
+        fail("assert_fundamental_availability_matches_v1"),
+        seed_edits=(
+            (
+                "fundamental_availability",
+                set_column("deadline_days", "40", lambda r: r["fiscal_quarter"] == "2"),
+            ),
+        ),
+    ),
+    Fault(
+        "fundamental_usable_at_period_end",
+        "Q1 usable on the day the quarter ends (deadline and buffer cancel out): look-ahead",
+        fail(
+            "fundamental_available_after_period_end",
+            "assert_fundamental_availability_matches_v1",
+        ),
+        seed_edits=(
+            (
+                "fundamental_availability",
+                set_column("deadline_days", "-5", lambda r: r["fiscal_quarter"] == "1"),
+            ),
+        ),
+    ),
+    Fault(
+        "fundamental_session_before_usable",
+        "the session window looks backward, so a quarter gets a session before its date",
+        fail("fundamental_session_not_before_available"),
+        mutants=(
+            Mutant(
+                FUNDAMENTAL,
+                "order by calendar_date rows between current row and unbounded following",
+                "order by calendar_date rows between unbounded preceding and current row",
+                2,
+            ),
+        ),
+    ),
+    Fault(
+        "fundamental_session_join_fans_out",
+        "the session join matches every later date, not the usable date: one row per later day",
+        fail("unique_combination_fct_fundamental_quarterly_symbol__fiscal_year__fiscal_quarter"),
+        mutants=(
+            Mutant(
+                FUNDAMENTAL,
+                "    on n.calendar_date = q.available_from_date\n",
+                "    on n.calendar_date >= q.available_from_date\n",
             ),
         ),
     ),

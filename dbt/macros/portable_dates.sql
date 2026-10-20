@@ -84,3 +84,17 @@
 {% macro default__median_over(column, partition_by) %}
     median({{ column }}) over (partition by {{ partition_by }})
 {% endmacro %}
+
+{# A date plus a whole number of days given by an expression; stays a DATE on every target
+   (dbt.dateadd returns a DATETIME on BigQuery). #}
+{% macro add_days(column, days) %}
+    {{ return(adapter.dispatch('add_days', 'vnmarket')(column, days)) }}
+{% endmacro %}
+
+{% macro bigquery__add_days(column, days) %}
+    date_add({{ column }}, interval ({{ days }}) day)
+{% endmacro %}
+
+{% macro default__add_days(column, days) %}
+    cast({{ column }} + cast({{ days }} as integer) as date)
+{% endmacro %}

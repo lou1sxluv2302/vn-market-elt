@@ -113,3 +113,22 @@ seeds:
     columns:
       - name: bad_date
         data_tests: [unique, not_null]
+
+  - name: fundamental_availability
+    description: >
+      Days from a fiscal quarter's end until its statements may be used: the statutory
+      deadline for the report the source's final figures come from (Circular 96/2020/TT-BTC;
+      Q4 is the audited annual report) plus a 5-day buffer. The source has no publication
+      date; v1 measured 99.8 % of 842 announcements within 90 days (data-sources.md).
+    config:
+      column_types:
+        as_of: date
+    columns:
+      - name: fiscal_quarter
+        data_tests: [unique, not_null]
+      - name: deadline_days
+        data_tests: [not_null]
+    data_tests:
+      - as_of_within_days:
+          arguments:
+            days: 366

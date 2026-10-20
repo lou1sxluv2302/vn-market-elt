@@ -7,6 +7,13 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Financial statements from v1's file: `load_v1_history --datasets fundamentals` loads the
+  statements and the charter-capital history as snapshots, clustered by symbol.
+  `stg_vnstock__fundamental_statement`, `int_fundamentals__quarterly` and
+  `fct_fundamental_quarterly` provide quarterly revenue, parent profit, derived operating
+  cash flow, ROE and shares, each with the date and the first session a quarter may be used.
+  The seed `fundamental_availability` holds the statutory deadline + 5 days, reconciled with
+  v1's date on every row. One unit test; 4 new planted faults, and 2 existing faults extended.
 - `dim_symbol` (current exchange and ICB industry / supersector in Vietnamese and English,
   from the newest snapshot; today's classification, not point in time) with staging
   `stg_vnstock__symbol_industries` and `stg_vnstock__industries_icb`;

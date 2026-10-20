@@ -67,6 +67,19 @@ Status: K0.2 · condensed from v1's knowledge base (KB) on 2026-10-08 · rows la
 
   Only layer 3 works without knowing the cap mechanism. Truncation means missing rows, not NULL cells, so measure coverage on rows (v1 03, L413).
 - `Company.news()` has a default 90-day window (widen it with `start=`), caps at 1,000 rows per call, and pages backwards with `end=`. `Finance` has no row cap ✅ (v1 02 §v1.6, L726, L761).
+- `Company.events()` (VCI) returns **the latest 50 events of every kind** by default. Insider deals crowd out dividends, so one symbol's dividend history began two months ago. Filtering `event_codes="DIV,ISS"` and paging (`size=100`) reaches 2006-2009 with an exercise ratio on every row ✅ `measured on v2, 2026-10-21`, 20 symbols, then 5 paged.
+
+**Financial statements** (loaded as `raw_vnstock.fundamental_statement`, mart `fct_fundamental_quarterly`)
+- Source: v1's VCI extract, long form. Quarterly and yearly from 2018 Q1; 1,549 symbols; 18 income-statement, 43 balance-sheet, 14 cash-flow and 55 ratio items ✅ `measured on v2, 2026-10-21` (the file v1 wrote on 2026-08-22). v1's extractor is not in its daily chain, so the file is a snapshot that changes only when someone reruns it.
+- **No publication date.** A quarter is usable from its statutory deadline + 5 days (seed `fundamental_availability`, Circular 96/2020/TT-BTC):
+  - Q1 and Q3: 30 days;
+  - Q2: 60 days (reviewed half-year);
+  - Q4: 90 days (audited annual).
+
+  The source's figures are the **final** ones, so Q4 uses the audited deadline, not the 30-day unaudited one. v1 measured 842 announcements across 9 symbols: median 31 days, p95 76, 99.8 % within 90 ✅ (v1 06a §v1.6.5). dbt recomputes the date and reconciles it with v1's own column on every row.
+- **Zero trap:** the source writes 0 for an item that does not apply. 43 % of values are 0. An item that is 0 in every period of a symbol becomes NULL ✅ (v1 06a §v1.6.6; v1 decides per industry, v2 per symbol).
+- **Operating cash flow is not in the source.** It is derived as change in cash - investing - financing - FX. Cash is the balance-sheet line named after the bank template (`Tiền, vàng gửi tại các TCTD khác`), which equals cash + equivalents for 100 % of non-bank rows, so adding the parts too would count cash twice ✅ (v1 06a §v1.6.12). Banks get NULL. `measured on v2, 2026-10-21`: 84 % of quarters derive; the median 4-quarter cash conversion is 0.93.
+- P/E, P/B and market cap must be recomputed from warehouse prices: the source's own price lags about 105 days ✅ (v1 06a).
 
 **VCI vs KBS**
 - Price history depth ✅ `measured on v1, 2026-08-18`, 65 symbols, 2015-01-05 → today (sources.yml L19-53):

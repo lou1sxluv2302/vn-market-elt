@@ -81,6 +81,7 @@ def bronze_tree(
     fallback: str,
     reference_files: list[str],
     flow_files: list[str],
+    fundamental_files: tuple[str, ...] | list[str] = (),
     seed: int = 7,
 ) -> dict:
     """Write the standard synthetic tree; return paths the tests plant faults next to."""
@@ -119,6 +120,11 @@ def bronze_tree(
         )
         for name in flow_files
     }
+    for name in fundamental_files:
+        write(
+            ref_dir / f"{name}.parquet",
+            pa.table({"symbol": ["AAA", "BBB"], "value": [1.0, 0.0]}),
+        )
     return {
         "flows": flow_paths,
         "late": late,
