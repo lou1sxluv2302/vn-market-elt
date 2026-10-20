@@ -66,6 +66,8 @@ select
     calendar_source,
     case when is_trading_day then trading_days_so_far end as session_seq,
     {{ iso_week_id('calendar_date') }} as trading_week_id,
+    {{ iso_week_start('calendar_date') }} as trading_week_start,
+    {{ iso_weekday('calendar_date') }} as iso_weekday,
     extract(year from calendar_date) * 100 + extract(month from calendar_date) as trading_month_id,
     extract(year from calendar_date) as trading_year_id,
     -- "2026-01": the label a month filter shows (a number id reads 202,601 in Power BI)

@@ -32,6 +32,32 @@
     (extract(isodow from {{ column }}) < 6)
 {% endmacro %}
 
+{# ISO weekday: 1 = Monday ... 7 = Sunday (BI v3: the calendar heat strip's columns). #}
+{% macro iso_weekday(column) %}
+    {{ return(adapter.dispatch('iso_weekday', 'vnmarket')(column)) }}
+{% endmacro %}
+
+{% macro bigquery__iso_weekday(column) %}
+    (mod(extract(dayofweek from {{ column }}) + 5, 7) + 1)
+{% endmacro %}
+
+{% macro default__iso_weekday(column) %}
+    extract(isodow from {{ column }})
+{% endmacro %}
+
+{# The Monday of the ISO week holding the date (BI v3: weekly matrix headers). #}
+{% macro iso_week_start(column) %}
+    {{ return(adapter.dispatch('iso_week_start', 'vnmarket')(column)) }}
+{% endmacro %}
+
+{% macro bigquery__iso_week_start(column) %}
+    date_trunc({{ column }}, isoweek)
+{% endmacro %}
+
+{% macro default__iso_week_start(column) %}
+    cast(date_trunc('week', {{ column }}) as date)
+{% endmacro %}
+
 {# ISO year and week as one integer, e.g. 202642: the key of a trading week. #}
 {% macro iso_week_id(column) %}
     {{ return(adapter.dispatch('iso_week_id', 'vnmarket')(column)) }}

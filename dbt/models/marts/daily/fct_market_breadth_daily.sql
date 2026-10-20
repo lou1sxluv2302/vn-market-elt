@@ -3,10 +3,18 @@
 -- denominators), so any grouping of exchanges stays exact. `pct_advancing` excludes
 -- unchanged symbols: its denominator is advancing + declining. No ceiling / floor counts:
 -- prices are adjusted, so they would be false (flows.md §4, ADR-0028).
+-- BI v3: turnover of advancing and declining symbols (does volume confirm the move), and
+-- the breadth oscillator's inputs - the mean of net advances over the last 10 and 50
+-- sessions of the exchange, NULL until that many sessions exist. A simple-mean stand-in
+-- for McClellan (whose EMA chain is not a SQL window); means add across exchanges.
 with active as (
-    select *
-    from {{ ref('int_prices__indicators') }}
-    where is_in_scope and not is_stale
+    select
+        i.*,
+        p.turnover_vnd as session_turnover_vnd
+    from {{ ref('int_prices__indicators') }} as i
+    left join {{ ref('fct_price_daily') }} as p
+        on p.symbol = i.symbol and p.trade_date = i.trade_date
+    where i.is_in_scope and not i.is_stale
 ),
 
 turnover_ranked as (
@@ -48,9 +56,28 @@ counts as (
         sum(case when close_vnd > ma200_vnd then 1 else 0 end) as above_ma200_count,
         sum(case when is_new_high_52w is not null then 1 else 0 end) as high_low_eligible_count,
         sum(case when is_new_high_52w then 1 else 0 end) as new_high_52w_count,
-        sum(case when is_new_low_52w then 1 else 0 end) as new_low_52w_count
+        sum(case when is_new_low_52w then 1 else 0 end) as new_low_52w_count,
+        sum(case when return_1d_ratio > 0 then coalesce(session_turnover_vnd, 0) else 0 end)
+            as advancing_turnover_vnd,
+        sum(case when return_1d_ratio < 0 then coalesce(session_turnover_vnd, 0) else 0 end)
+            as declining_turnover_vnd
     from active
     group by exchange, trade_date
+),
+
+oscillator as (
+    select
+        *,
+        count(*) over (
+            partition by exchange order by trade_date rows between 49 preceding and current row
+        ) as rows_50,
+        avg(advancing_count - declining_count) over (
+            partition by exchange order by trade_date rows between 9 preceding and current row
+        ) as mean_10,
+        avg(advancing_count - declining_count) over (
+            partition by exchange order by trade_date rows between 49 preceding and current row
+        ) as mean_50
+    from counts
 )
 
 select
@@ -74,7 +101,11 @@ select
         rows between unbounded preceding and current row
     ) as ad_line,
     t.turnover_vnd,
-    t.top10_turnover_vnd
-from counts as c
+    t.top10_turnover_vnd,
+    c.advancing_turnover_vnd,
+    c.declining_turnover_vnd,
+    case when c.rows_50 >= 10 then c.mean_10 end as net_advances_mean_10,
+    case when c.rows_50 = 50 then c.mean_50 end as net_advances_mean_50
+from oscillator as c
 left join turnover as t
     on t.exchange = c.exchange and t.trade_date = c.trade_date
