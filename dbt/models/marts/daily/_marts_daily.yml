@@ -5,6 +5,10 @@ models:
     description: One row per calendar day; sessions observed in history, weekdays minus holidays after.
     data_tests:
       - not_empty
+      - row_condition:
+          name: calendar_weekday_and_week_start
+          arguments:
+            condition: iso_weekday between 1 and 7 and trading_week_start <= calendar_date and (not is_trading_day or iso_weekday <= 5)
     columns:
       - name: calendar_date
         data_tests: [unique, not_null]

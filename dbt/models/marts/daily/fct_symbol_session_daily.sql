@@ -22,6 +22,7 @@ select
     l.adv_20d_vnd,
     l.liquidity_tier,
     coalesce(u.is_in_universe, false) as is_in_universe,
+    u.exclusion_reason,
     f.foreign_buy_total_value_vnd,
     f.foreign_sell_total_value_vnd,
     f.foreign_net_total_value_vnd

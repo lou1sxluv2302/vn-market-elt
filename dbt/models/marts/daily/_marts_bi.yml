@@ -35,6 +35,10 @@ models:
           name: breadth_above_within_eligible
           arguments:
             condition: above_ma50_count <= ma50_eligible_count and above_ma200_count <= ma200_eligible_count
+      - row_condition:
+          name: breadth_turnover_sides_within_total
+          arguments:
+            condition: advancing_turnover_vnd + declining_turnover_vnd <= coalesce(turnover_vnd, 0)
 
   - name: fct_market_flow_daily
     description: Foreign and proprietary flow per exchange and session; the split only where valid.
@@ -90,6 +94,39 @@ models:
           name: sector_above_within_eligible
           arguments:
             condition: above_ma50_count <= ma50_eligible_count and above_ma200_count <= ma200_eligible_count
+
+
+  - name: fct_foreign_streak_daily
+    description: BI v3 - per symbol and session with foreign net, the current same-sign run's length and net sum.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, trade_date]
+      - not_empty
+      - row_condition:
+          name: streak_sum_has_the_run_sign
+          arguments:
+            condition: sign(run_net_vnd) = net_sign and run_sessions >= 1
+
+  - name: fct_market_concentration_daily
+    description: BI v3 - the fewest symbols making half / 80 % of each session's turnover (both exchanges).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [trade_date]
+      - not_empty
+      - row_condition:
+          name: concentration_counts_ordered
+          arguments:
+            condition: 1 <= symbols_for_half_turnover and symbols_for_half_turnover <= symbols_for_80pct_turnover and symbols_for_80pct_turnover <= traded_symbol_count
+
+  - name: fct_universe_tenure_daily
+    description: BI v3 - for each universe row, the sessions in a row the symbol has been in the universe.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, trade_date]
+      - not_empty
 
 unit_tests:
   - name: indicators_moving_averages_and_52_week_flags
@@ -259,3 +296,105 @@ unit_tests:
         - {supersector_code: '8300', trade_date: 2026-07-01, active_symbol_count: 2, advancing_count: 1, declining_count: 1, mean_return_1d_ratio: 0.125, median_return_1d_ratio: 0.125, turnover_vnd: 400, turnover_x_return_vnd: -25, ma50_eligible_count: 1, above_ma50_count: 1, new_high_52w_count: 1, foreign_net_value_vnd: 6}
         - {supersector_code: none, trade_date: 2026-07-01, active_symbol_count: 1, advancing_count: 1, declining_count: 0, mean_return_1d_ratio: 0.5, median_return_1d_ratio: 0.5, turnover_vnd: 50, turnover_x_return_vnd: 25, ma50_eligible_count: 0, above_ma50_count: 0, new_high_52w_count: 0, foreign_net_value_vnd: null}
         - {supersector_code: '8300', trade_date: 2026-07-02, active_symbol_count: 2, advancing_count: 1, declining_count: 0, mean_return_1d_ratio: 0.25, median_return_1d_ratio: 0.25, turnover_vnd: 200, turnover_x_return_vnd: 50, ma50_eligible_count: 0, above_ma50_count: 0, new_high_52w_count: 1, foreign_net_value_vnd: 0}
+
+  - name: breadth_turnover_sides_and_oscillator
+    description: >
+      One symbol, ten sessions: up five times, then down five. Net advances are +1 then -1,
+      so the 10-session mean is NULL for sessions 1-9 (fewer than ten rows) and 0 at 10; the
+      50-session mean stays NULL. Each session's turnover (10 x session) lands on the
+      advancing side while up and on the declining side while down.
+    model: fct_market_breadth_daily
+    given:
+      - input: ref('int_prices__indicators')
+        rows:
+          - {symbol: A, trade_date: 2026-07-01, session_seq: 1, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100, return_1d_ratio: 0.5, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+          - {symbol: A, trade_date: 2026-07-02, session_seq: 2, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100, return_1d_ratio: 0.5, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+          - {symbol: A, trade_date: 2026-07-03, session_seq: 3, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100, return_1d_ratio: 0.5, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+          - {symbol: A, trade_date: 2026-07-06, session_seq: 4, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100, return_1d_ratio: 0.5, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+          - {symbol: A, trade_date: 2026-07-07, session_seq: 5, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100, return_1d_ratio: 0.5, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+          - {symbol: A, trade_date: 2026-07-08, session_seq: 6, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100, return_1d_ratio: -0.25, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+          - {symbol: A, trade_date: 2026-07-09, session_seq: 7, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100, return_1d_ratio: -0.25, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+          - {symbol: A, trade_date: 2026-07-10, session_seq: 8, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100, return_1d_ratio: -0.25, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+          - {symbol: A, trade_date: 2026-07-13, session_seq: 9, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100, return_1d_ratio: -0.25, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+          - {symbol: A, trade_date: 2026-07-14, session_seq: 10, exchange: HOSE, is_in_scope: true, is_stale: false, close_vnd: 100, return_1d_ratio: -0.25, ma50_vnd: null, ma200_vnd: null, is_new_high_52w: null, is_new_low_52w: null}
+      - input: ref('fct_price_daily')
+        rows:
+          - {symbol: A, trade_date: 2026-07-01, exchange: HOSE, is_in_scope: true, is_stale: false, turnover_vnd: 10}
+          - {symbol: A, trade_date: 2026-07-02, exchange: HOSE, is_in_scope: true, is_stale: false, turnover_vnd: 20}
+          - {symbol: A, trade_date: 2026-07-03, exchange: HOSE, is_in_scope: true, is_stale: false, turnover_vnd: 30}
+          - {symbol: A, trade_date: 2026-07-06, exchange: HOSE, is_in_scope: true, is_stale: false, turnover_vnd: 40}
+          - {symbol: A, trade_date: 2026-07-07, exchange: HOSE, is_in_scope: true, is_stale: false, turnover_vnd: 50}
+          - {symbol: A, trade_date: 2026-07-08, exchange: HOSE, is_in_scope: true, is_stale: false, turnover_vnd: 60}
+          - {symbol: A, trade_date: 2026-07-09, exchange: HOSE, is_in_scope: true, is_stale: false, turnover_vnd: 70}
+          - {symbol: A, trade_date: 2026-07-10, exchange: HOSE, is_in_scope: true, is_stale: false, turnover_vnd: 80}
+          - {symbol: A, trade_date: 2026-07-13, exchange: HOSE, is_in_scope: true, is_stale: false, turnover_vnd: 90}
+          - {symbol: A, trade_date: 2026-07-14, exchange: HOSE, is_in_scope: true, is_stale: false, turnover_vnd: 100}
+    expect:
+      rows:
+        - {exchange: HOSE, trade_date: 2026-07-01, advancing_turnover_vnd: 10, declining_turnover_vnd: 0, net_advances_mean_10: null, net_advances_mean_50: null}
+        - {exchange: HOSE, trade_date: 2026-07-02, advancing_turnover_vnd: 20, declining_turnover_vnd: 0, net_advances_mean_10: null, net_advances_mean_50: null}
+        - {exchange: HOSE, trade_date: 2026-07-03, advancing_turnover_vnd: 30, declining_turnover_vnd: 0, net_advances_mean_10: null, net_advances_mean_50: null}
+        - {exchange: HOSE, trade_date: 2026-07-06, advancing_turnover_vnd: 40, declining_turnover_vnd: 0, net_advances_mean_10: null, net_advances_mean_50: null}
+        - {exchange: HOSE, trade_date: 2026-07-07, advancing_turnover_vnd: 50, declining_turnover_vnd: 0, net_advances_mean_10: null, net_advances_mean_50: null}
+        - {exchange: HOSE, trade_date: 2026-07-08, advancing_turnover_vnd: 0, declining_turnover_vnd: 60, net_advances_mean_10: null, net_advances_mean_50: null}
+        - {exchange: HOSE, trade_date: 2026-07-09, advancing_turnover_vnd: 0, declining_turnover_vnd: 70, net_advances_mean_10: null, net_advances_mean_50: null}
+        - {exchange: HOSE, trade_date: 2026-07-10, advancing_turnover_vnd: 0, declining_turnover_vnd: 80, net_advances_mean_10: null, net_advances_mean_50: null}
+        - {exchange: HOSE, trade_date: 2026-07-13, advancing_turnover_vnd: 0, declining_turnover_vnd: 90, net_advances_mean_10: null, net_advances_mean_50: null}
+        - {exchange: HOSE, trade_date: 2026-07-14, advancing_turnover_vnd: 0, declining_turnover_vnd: 100, net_advances_mean_10: 0.0, net_advances_mean_50: null}
+
+  - name: foreign_streak_runs
+    description: >
+      A nets +5, +3, -2, 0, -1: runs of 2, 1, 1, 1 (a zero starts its own run); the run sum
+      carries on inside a run only. B has no value and gives no row.
+    model: fct_foreign_streak_daily
+    given:
+      - input: ref('fct_foreign_flow_daily')
+        rows:
+          - {symbol: A, trade_date: 2026-07-01, foreign_net_total_value_vnd: 5}
+          - {symbol: A, trade_date: 2026-07-02, foreign_net_total_value_vnd: 3}
+          - {symbol: A, trade_date: 2026-07-03, foreign_net_total_value_vnd: -2}
+          - {symbol: A, trade_date: 2026-07-06, foreign_net_total_value_vnd: 0}
+          - {symbol: A, trade_date: 2026-07-07, foreign_net_total_value_vnd: -1}
+          - {symbol: B, trade_date: 2026-07-01, foreign_net_total_value_vnd: null}
+    expect:
+      rows:
+        - {symbol: A, trade_date: 2026-07-01, run_sessions: 1, run_net_vnd: 5}
+        - {symbol: A, trade_date: 2026-07-02, run_sessions: 2, run_net_vnd: 8}
+        - {symbol: A, trade_date: 2026-07-03, run_sessions: 1, run_net_vnd: -2}
+        - {symbol: A, trade_date: 2026-07-06, run_sessions: 1, run_net_vnd: 0}
+        - {symbol: A, trade_date: 2026-07-07, run_sessions: 1, run_net_vnd: -1}
+
+  - name: concentration_half_and_80pct
+    description: >
+      Turnover 50, 30, 20 (total 100): the first symbol reaches half, the first two reach
+      80 %. A stale row and a row with no turnover are not counted.
+    model: fct_market_concentration_daily
+    given:
+      - input: ref('fct_price_daily')
+        rows:
+          - {symbol: A, trade_date: 2026-07-01, is_in_scope: true, is_stale: false, turnover_vnd: 50}
+          - {symbol: B, trade_date: 2026-07-01, is_in_scope: true, is_stale: false, turnover_vnd: 30}
+          - {symbol: C, trade_date: 2026-07-01, is_in_scope: true, is_stale: false, turnover_vnd: 20}
+          - {symbol: D, trade_date: 2026-07-01, is_in_scope: true, is_stale: true, turnover_vnd: 900}
+          - {symbol: E, trade_date: 2026-07-01, is_in_scope: true, is_stale: false, turnover_vnd: 0}
+    expect:
+      rows:
+        - {trade_date: 2026-07-01, traded_symbol_count: 3, turnover_vnd: 100, symbols_for_half_turnover: 1, symbols_for_80pct_turnover: 2}
+
+  - name: universe_tenure_runs
+    description: >
+      A is in, in, out, in: tenure 1, 2, then 1 again after the gap. B is never in: no row.
+    model: fct_universe_tenure_daily
+    given:
+      - input: ref('fct_universe_daily')
+        rows:
+          - {symbol: A, trade_date: 2026-07-01, is_in_universe: true}
+          - {symbol: A, trade_date: 2026-07-02, is_in_universe: true}
+          - {symbol: A, trade_date: 2026-07-03, is_in_universe: false}
+          - {symbol: A, trade_date: 2026-07-06, is_in_universe: true}
+          - {symbol: B, trade_date: 2026-07-01, is_in_universe: false}
+    expect:
+      rows:
+        - {symbol: A, trade_date: 2026-07-01, tenure_sessions: 1}
+        - {symbol: A, trade_date: 2026-07-02, tenure_sessions: 2}
+        - {symbol: A, trade_date: 2026-07-06, tenure_sessions: 1}

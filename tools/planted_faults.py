@@ -250,6 +250,32 @@ def flow_row(
 BEFORE_SPLIT_CUTOFF = dt.date(2019, 12, 31)  # foreign splits trusted from 2020-01-02
 
 
+def flip_late_foreign_net(tables: dict[str, Rows]) -> dict[str, Rows]:
+    """One liquid symbol's foreign net made positive on its first two sessions and negative
+    on its last three. The fixture has buy = sell (net 0, as the mart recomputes net = buy -
+    sell), so one side is doubled: buy early, sell late; the net fields follow."""
+    symbol, early, late = sorted(LIQUID)[0], set(SESSIONS[:2]), set(SESSIONS[2:5])
+
+    def turned(r: dict, side: str, sign: int) -> dict:
+        out = dict(r)
+        for k, v in r.items():
+            if isinstance(v, float) and k.startswith(f"fr_{side}_"):
+                out[k] = 2 * v
+            elif isinstance(v, float) and k.startswith("fr_net_"):
+                out[k] = sign * abs(v)
+        return out
+
+    flipped = [
+        turned(r, "buy", 1)
+        if r["symbol"] == symbol and r["session_date"] in early
+        else turned(r, "sell", -1)
+        if r["symbol"] == symbol and r["session_date"] in late
+        else r
+        for r in tables["foreign_trade_daily"]
+    ]
+    return {**tables, "foreign_trade_daily": flipped}
+
+
 def snapshot_tables() -> dict[str, Rows]:
     """Flow and index snapshots: an older and a newer one, so staging must pick the newest."""
     days = SESSIONS[:5]
@@ -396,6 +422,9 @@ FLOW = "models/marts/daily/fct_market_flow_daily.sql"
 USUM = "models/marts/daily/fct_universe_summary_daily.sql"
 PERIOD = "models/marts/daily/dim_trading_period.sql"
 SECTOR = "models/marts/daily/fct_sector_daily.sql"
+STREAK = "models/marts/daily/fct_foreign_streak_daily.sql"
+CONC = "models/marts/daily/fct_market_concentration_daily.sql"
+TENURE = "models/marts/daily/fct_universe_tenure_daily.sql"
 GRAIN = {
     "fct": "unique_combination_fct_price_daily_symbol__trade_date",
     "liq": "unique_combination_fct_liquidity_daily_symbol__trade_date",
@@ -407,6 +436,8 @@ BI_NOT_EMPTY = [
     "not_empty_fct_market_flow_daily_",
     "not_empty_fct_universe_summary_daily_",
     "not_empty_fct_sector_daily_",
+    "not_empty_fct_market_concentration_daily_",
+    "not_empty_fct_universe_tenure_daily_",
 ]
 NOT_EMPTY = [
     "not_empty_stg_vnstock__ohlcv_daily_",
@@ -455,6 +486,7 @@ FAULTS = [
             "not_empty_fct_prop_flow_daily_",
             "not_empty_fct_index_daily_",
             "not_empty_fct_market_flow_daily_",
+            "not_empty_fct_foreign_streak_daily_",
         ),
         snapshots=lambda tables: dict.fromkeys(tables, []),
     ),
@@ -463,6 +495,7 @@ FAULTS = [
         "the newest-snapshot filter lost in staging (echoes: the flow and index marts, and the "
         "symbol fact that joins foreign flow)",
         fail(
+            "unique_combination_fct_foreign_streak_daily_symbol__trade_date",
             "assert_sector_counts_match_breadth",
             "unique_combination_stg_vnstock__foreign_trade_symbol__trade_date",
             "unique_combination_stg_vnstock__prop_trade_symbol__trade_date",
@@ -550,6 +583,8 @@ FAULTS = [
         "indicators and the symbol fact inherit the doubled rows, the breadth recount and the "
         "MA recount see them)",
         fail(
+            "breadth_turnover_sides_within_total",
+            "unique_combination_fct_universe_tenure_daily_symbol__trade_date",
             "assert_sector_counts_match_breadth",
             "unique_combination_price_band_exchange__band_case__effective_from",
             GRAIN["fct"],
@@ -658,7 +693,7 @@ FAULTS = [
     Fault(
         "full_pull_on_a_saturday",
         "a source dates a full session on a Saturday",
-        fail("assert_no_session_on_weekend"),
+        fail("calendar_weekday_and_week_start", "assert_no_session_on_weekend"),
         data=add_rows(lambda: full_pull(SATURDAY + dt.timedelta(days=7))),
     ),
     Fault(
@@ -888,8 +923,11 @@ FAULTS = [
     ),
     Fault(
         "tier_thresholds_in_wrong_unit",
-        "liquidity tiers entered in VND x 1,000",
-        warn("assert_universe_covers_falling_markets"),
+        "liquidity tiers entered in VND x 1,000 (echo: an empty universe leaves no tenure row)",
+        {
+            **warn("assert_universe_covers_falling_markets"),
+            **fail("not_empty_fct_universe_tenure_daily_"),
+        },
         vars={
             "liquidity_tier_high_vnd": 10**14,
             "liquidity_tier_medium_vnd": 3 * 10**13,
@@ -913,7 +951,13 @@ FAULTS = [
         "breadth_counts_stale_rows",
         "breadth counts stale sessions (volume 0, price copied) as active",
         fail("assert_sector_counts_match_breadth", "assert_breadth_counts_only_active_rows"),
-        mutants=(Mutant(BREADTH, "where is_in_scope and not is_stale\n)", "where is_in_scope\n)"),),
+        mutants=(
+            Mutant(
+                BREADTH,
+                "where i.is_in_scope and not i.is_stale\n)",
+                "where i.is_in_scope\n)",
+            ),
+        ),
     ),
     Fault(
         "universe_count_not_point_in_time",
@@ -957,6 +1001,7 @@ FAULTS = [
         "every price row twice in the indicators (echoes: the symbol fact's grain and the "
         "breadth recount, both built on it)",
         fail(
+            "breadth_turnover_sides_within_total",
             "unique_combination_int_prices__indicators_symbol__trade_date",
             "unique_combination_fct_symbol_session_daily_symbol__trade_date",
             "assert_breadth_counts_only_active_rows",
@@ -974,6 +1019,7 @@ FAULTS = [
         "each BI mart joins or groups without its date or type key (echo: the universe "
         "recount sees partial counts per row)",
         fail(
+            "breadth_turnover_sides_within_total",
             "assert_sector_counts_match_breadth",
             "unique_combination_fct_symbol_session_daily_symbol__trade_date",
             "unique_combination_fct_market_breadth_daily_exchange__trade_date",
@@ -1050,6 +1096,96 @@ FAULTS = [
                 "sum(case when close_vnd > ma50_vnd then 1 else 0 end) as above_ma50_count",
                 "sum(case when close_vnd > coalesce(ma50_vnd, 0) then 1 else 0 end)"
                 " as above_ma50_count",
+            ),
+        ),
+    ),
+    Fault(
+        "breadth_turnover_sides_take_everything",
+        "the advancing side summed over every active row, so the sides exceed the total",
+        fail("breadth_turnover_sides_within_total"),
+        mutants=(
+            Mutant(
+                BREADTH,
+                "sum(case when return_1d_ratio > 0 then coalesce(session_turnover_vnd, 0) "
+                "else 0 end)",
+                "sum(coalesce(session_turnover_vnd, 0))",
+            ),
+        ),
+    ),
+    Fault(
+        "streak_sum_crosses_runs",
+        "the run sum keeps adding across a change of sign (data: one symbol's foreign net "
+        "is positive for two sessions, then negative for three, so a run ends - the fixture's "
+        "flows net to zero)",
+        fail("streak_sum_has_the_run_sign"),
+        snapshots=flip_late_foreign_net,
+        mutants=(
+            Mutant(
+                STREAK,
+                "partition by symbol, run_id order by trade_date\n        rows between",
+                "partition by symbol order by trade_date\n        rows between",
+            ),
+        ),
+    ),
+    Fault(
+        "streak_rows_doubled",
+        "every flow row read twice",
+        fail("unique_combination_fct_foreign_streak_daily_symbol__trade_date"),
+        mutants=(
+            Mutant(
+                STREAK,
+                "    from {{ ref('fct_foreign_flow_daily') }}\n",
+                "    from (select * from {{ ref('fct_foreign_flow_daily') }} union all "
+                "select * from {{ ref('fct_foreign_flow_daily') }}) as f2\n",
+            ),
+        ),
+    ),
+    Fault(
+        "concentration_80pct_below_half",
+        "the 80 % share computed at 30 %, so it falls under the half count",
+        fail("concentration_counts_ordered"),
+        mutants=(Mutant(CONC, "< 0.8 * total_vnd", "< 0.3 * total_vnd"),),
+    ),
+    Fault(
+        "concentration_grouped_per_symbol",
+        "grouped by session and turnover: one row per symbol instead of per session",
+        fail(
+            "concentration_counts_ordered",
+            "unique_combination_fct_market_concentration_daily_trade_date",
+        ),
+        mutants=(Mutant(CONC, "group by trade_date\n", "group by trade_date, turnover_vnd\n"),),
+    ),
+    Fault(
+        "tenure_counts_rows_out",
+        "tenure kept for rows out of the universe",
+        fail("assert_tenure_rows_match_universe"),
+        mutants=(Mutant(TENURE, "from runs\nwhere is_in_universe\n", "from runs\n"),),
+    ),
+    Fault(
+        "tenure_rows_doubled",
+        "every universe row read twice",
+        fail(
+            "unique_combination_fct_universe_tenure_daily_symbol__trade_date",
+            "assert_tenure_rows_match_universe",
+        ),
+        mutants=(
+            Mutant(
+                TENURE,
+                "    from {{ ref('fct_universe_daily') }}\n",
+                "    from (select * from {{ ref('fct_universe_daily') }} union all "
+                "select * from {{ ref('fct_universe_daily') }}) as u2\n",
+            ),
+        ),
+    ),
+    Fault(
+        "weekday_off_by_one",
+        "the ISO weekday one day late, so Friday sessions read as Saturday",
+        fail("calendar_weekday_and_week_start"),
+        mutants=(
+            Mutant(
+                "macros/portable_dates.sql",
+                "    extract(isodow from {{ column }})\n",
+                "    (extract(isodow from {{ column }}) + 1)\n",
             ),
         ),
     ),
