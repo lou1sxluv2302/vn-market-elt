@@ -30,6 +30,14 @@
             _source_sha256 varchar, _loaded_at timestamptz
         );
         {%- endfor %}
+        create table if not exists raw_vnstock.ref_symbols_by_industries (
+            symbol varchar, organ_name varchar, com_type_code varchar, icb_level bigint,
+            icb_code varchar, icb_name varchar, _source_sha256 varchar, _loaded_at timestamptz
+        );
+        create table if not exists raw_vnstock.ref_industries_icb (
+            icb_name varchar, en_icb_name varchar, icb_code varchar, level bigint,
+            _source_sha256 varchar, _loaded_at timestamptz
+        );
         create table if not exists raw_vnstock.index_daily (
             index_code varchar, session_date date,
             open double, high double, low double, close double, volume bigint, _source_id varchar,

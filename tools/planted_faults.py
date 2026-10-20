@@ -566,10 +566,12 @@ FAULTS = [
     ),
     Fault(
         "duplicate_exchange_change",
-        "an announced move entered twice (echo: every HNX symbol's periods doubled)",
+        "an announced move entered twice (echoes: every HNX symbol's periods doubled, "
+        "so its open period too and dim_symbol's one row per symbol)",
         fail(
             "unique_combination_exchange_changes_from_exchange__effective_from",
             "unique_combination_dim_security_symbol__effective_from",
+            "unique_dim_symbol_symbol",
         ),
         seed_edits=(("exchange_changes", duplicate(lambda r: r["from_exchange"] == "HNX")),),
     ),
@@ -632,8 +634,12 @@ FAULTS = [
     Fault(
         "delisted_split_by_move",
         "the move splits delisted symbols too (the price rows "
-        "joining both periods are cut back to one by the tick rank)",
-        fail("unique_combination_dim_security_symbol__effective_from"),
+        "joining both periods are cut back to one by the tick rank; echo: a delisted "
+        "symbol's two open periods give dim_symbol two rows)",
+        fail(
+            "unique_combination_dim_security_symbol__effective_from",
+            "unique_dim_symbol_symbol",
+        ),
         mutants=(
             Mutant(
                 SEC,

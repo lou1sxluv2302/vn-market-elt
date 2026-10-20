@@ -68,6 +68,8 @@ select
     {{ iso_week_id('calendar_date') }} as trading_week_id,
     extract(year from calendar_date) * 100 + extract(month from calendar_date) as trading_month_id,
     extract(year from calendar_date) as trading_year_id,
+    -- "2026-01": the label a month filter shows (a number id reads 202,601 in Power BI)
+    concat(cast(extract(year from calendar_date) as string), '-', lpad(cast(extract(month from calendar_date) as string), 2, '0')) as trading_month_label,
     sum(case when is_trading_day then 1 else 0 end) over (
         partition by extract(year from calendar_date), extract(month from calendar_date)
     ) as month_session_count,
