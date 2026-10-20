@@ -1,7 +1,8 @@
 -- Foreign and proprietary flow per (exchange, trade_date), summed over in-scope symbols.
 -- Totals always; the matched / put-through split is summed only over rows where it is
 -- valid, with the count of rows where it is not (flows.md §2.3), so the report can say
--- "split not valid on N symbols" instead of showing a wrong split.
+-- "split not valid on N symbols" instead of showing a wrong split. `foreign_net_cum_value_vnd`
+-- is the running total per exchange.
 with priced as (
     select symbol, trade_date, exchange
     from {{ ref('fct_price_daily') }}
@@ -50,7 +51,14 @@ select
     f.foreign_split_invalid_count,
     f.foreign_symbol_count,
     r.prop_net_value_vnd,
-    r.prop_symbol_count
+    r.prop_symbol_count,
+    -- running total per exchange since the first session (bi-conventions: cumulative state
+    -- lives here, the report takes a window as the difference of two of these)
+    sum(coalesce(f.foreign_net_value_vnd, 0)) over (
+        partition by coalesce(f.exchange, r.exchange)
+        order by coalesce(f.trade_date, r.trade_date)
+        rows between unbounded preceding and current row
+    ) as foreign_net_cum_value_vnd
 from foreign_flow as f
 full outer join prop_flow as r
     on r.exchange = f.exchange and r.trade_date = f.trade_date
