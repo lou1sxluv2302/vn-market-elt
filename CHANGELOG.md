@@ -7,6 +7,15 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `vnmarket.el.load_vci_reference`: Vietcap REST without the vendor library (PyPI
+  quarantined vnstock / vnai). It loads two raw tables:
+  - corporate actions (dividends and share issues from 2000, every page), refused on a
+    silent truncation or a shrinking history;
+  - a daily VN30 / HNX30 membership ledger.
+
+  dbt: `stg_vci__corporate_actions`, `stg_vci__index_membership`, `fct_corporate_action`
+  (typed) and `fct_index_membership_daily` (inclusion flag). Two unit tests; 3 new planted
+  faults and 1 extended.
 - Financial statements from v1's file: `load_v1_history --datasets fundamentals` loads the
   statements and the charter-capital history as snapshots, clustered by symbol.
   `stg_vnstock__fundamental_statement`, `int_fundamentals__quarterly` and

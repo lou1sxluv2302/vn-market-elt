@@ -107,6 +107,12 @@ _Avoid_: ex-date (unqualified), record date
 **Record date** (`record_date`) · _ngày đăng ký cuối cùng_:
 The date that fixes who receives the right.
 
+**Exercise ratio** (`exercise_ratio`) · _tỷ lệ thực hiện_:
+The source's ratio for a corporate action: of par for a cash dividend (0.045 = 450 VND on 10,000), new shares per old share for an issue.
+
+**Index membership ledger** (`fct_index_membership_daily`, `is_new_member`) · _sổ thành phần rổ chỉ số_:
+Today's VN30 / HNX30 list recorded once per session from 2026-10-21. No source keeps the history, so a missed session is lost.
+
 **Cash dividend** (`cash_dividend_vnd`) · _cổ tức tiền mặt_:
 A per-share cash payment, converted from its percentage of par value.
 

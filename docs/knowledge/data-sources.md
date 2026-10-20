@@ -69,6 +69,19 @@ Status: K0.2 · condensed from v1's knowledge base (KB) on 2026-10-08 · rows la
 - `Company.news()` has a default 90-day window (widen it with `start=`), caps at 1,000 rows per call, and pages backwards with `end=`. `Finance` has no row cap ✅ (v1 02 §v1.6, L726, L761).
 - `Company.events()` (VCI) returns **the latest 50 events of every kind** by default. Insider deals crowd out dividends, so one symbol's dividend history began two months ago. Filtering `event_codes="DIV,ISS"` and paging (`size=100`) reaches 2006-2009 with an exercise ratio on every row ✅ `measured on v2, 2026-10-21`, 20 symbols, then 5 paged.
 
+**Vietcap REST, called directly** (`vnmarket.el.load_vci_reference`, config `vci_rest`)
+- **PyPI quarantined `vnstock` and `vnai` on 2026-09-24**, pending a "security review" whose reason is unpublished; fresh installs fail. v2 does not depend on either.
+- Read in v1's installed copy (source only, never imported), the libraries do the following on import ✅ `read on v2, 2026-10-21`:
+  - write AI-assistant instruction files (`./AGENTS.md`, `~/.cursorrules`, `~/.windsurfrules`, `~/.clinerules`, `~/.clauderc`, `~/.github/copilot-instructions.md`, `~/.gemini/config/AGENTS.md`) with text fetched from the vendor's server;
+  - send usage telemetry every 300 s.
+- The two endpoints v2 needs are public and take plain HTTP with browser-like headers:
+  - `iq.vietcap.com.vn/api/iq-insight-service/v1/events` (paged, with `totalElements`);
+  - `trading.vietcap.com.vn/api/price/symbols/getByGroup?group=VN30`.
+
+  Every call has a timeout and is paced at 3 s. At 1.5 s the events endpoint stopped answering after ~250 calls (read timeouts that lasted past the run) `measured on v2, 2026-10-21`, so a failed call is retried after 60 / 180 / 600 s, and 5 calls that fail every retry stop the run.
+- Corporate actions: one snapshot per run, refused when a symbol's rows differ from `totalElements` or fall below the newest snapshot (rule 9).
+- Index membership: **today's list only**, VN30 and HNX30 (VNDIAMOND returned empty 2026-10-21). The ledger starts 2026-10-21. A missed session is lost, so the daily chain records it every session.
+
 **Financial statements** (loaded as `raw_vnstock.fundamental_statement`, mart `fct_fundamental_quarterly`)
 - Source: v1's VCI extract, long form. Quarterly and yearly from 2018 Q1; 1,549 symbols; 18 income-statement, 43 balance-sheet, 14 cash-flow and 55 ratio items ✅ `measured on v2, 2026-10-21` (the file v1 wrote on 2026-08-22). v1's extractor is not in its daily chain, so the file is a snapshot that changes only when someone reruns it.
 - **No publication date.** A quarter is usable from its statutory deadline + 5 days (seed `fundamental_availability`, Circular 96/2020/TT-BTC):

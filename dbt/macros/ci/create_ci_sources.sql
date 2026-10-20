@@ -46,6 +46,16 @@
             item_all_null boolean, src varchar, loaded_at timestamptz,
             _source_sha256 varchar, _loaded_at timestamptz
         );
+        create table if not exists raw_vnstock.corporate_actions (
+            symbol varchar, event_id varchar, event_code varchar, category varchar,
+            event_name_en varchar, event_title_en varchar, public_date date, record_date date,
+            exright_date date, issue_date date, payout_date date, exercise_ratio double,
+            value_per_share double, payload_json varchar, _server_total bigint, _run_id varchar,
+            _loaded_at timestamptz
+        );
+        create table if not exists raw_vnstock.index_membership_snapshot (
+            as_of_date date, group_code varchar, symbol varchar, _loaded_at timestamptz
+        );
         create table if not exists raw_vnstock.index_daily (
             index_code varchar, session_date date,
             open double, high double, low double, close double, volume bigint, _source_id varchar,

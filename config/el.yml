@@ -65,6 +65,48 @@ v1_history:
   bigquery_file_upload_timeout_seconds: 1800
   bigquery_retry_deadline_seconds: 300
 
+# Vietcap (VCI) public REST endpoints, called directly with `requests`: no vendor library
+# (PyPI quarantined vnstock and vnai on 2026-09-24; the vnstock source showed these URLs and
+# headers). Loaded by vnmarket.el.load_vci_reference into raw_vnstock as sa-loader.
+vci_rest:
+  pipeline_name: vci_reference
+  dataset: raw_vnstock
+  bq_location: US
+  headers:
+    User-Agent: "Mozilla/5.0"
+    Accept: application/json
+    Referer: "https://trading.vietcap.com.vn/"
+    Origin: "https://trading.vietcap.com.vn/"
+  timeout_seconds: 30            # per HTTP call (engineering rule: every call has one)
+  # Between calls. Measured 2026-10-21: 0.3-0.8 s per call; at 1.5 s the events endpoint
+  # stopped answering after ~250 calls (read timeouts for 20 calls in a row and after), so
+  # the pace is halved and a failed call waits before it is retried.
+  pause_seconds: 3.0
+  retry_backoff_seconds: [60, 180, 600]   # waits before the 1st, 2nd, 3rd retry of one call
+  max_consecutive_errors: 5      # calls that failed after every retry; then "source down"
+  # Corporate actions: dividends (DIV) and share issues (ISS: bonus, stock dividend, rights,
+  # placements). The default call returns only the latest 50 events of EVERY kind, so the
+  # codes are filtered and every page is read; a symbol whose rows differ from the server's
+  # `totalElements` is refused (rule 9: silent truncation blocks the write).
+  corporate_actions:
+    url: "https://iq.vietcap.com.vn/api/iq-insight-service/v1/events"
+    event_codes: "DIV,ISS"
+    from_date: "20000101"
+    page_size: 100
+    max_pages: 20                # 2,000 events; measured maximum 95 (FPT, 2026-10-21)
+    table: corporate_actions
+    # The symbol list: v1's symbols_by_exchange snapshot, stocks of these exchanges, delisted
+    # ones included (leaving them out would be survivorship bias).
+    symbol_file: symbols_by_exchange
+    exchanges: [HSX, HNX, DELISTED]
+    instrument_type: STOCK
+  # Index membership, today's list only (no history exists): an append-only daily ledger.
+  # VNDIAMOND returned an empty response on 2026-10-21, so it is not requested.
+  index_members:
+    url: "https://trading.vietcap.com.vn/api/price/symbols/getByGroup"
+    groups: {VN30: 30, HNX30: 30}  # group: expected member count (a different count is refused)
+    table: index_membership_snapshot
+
 reconcile_v1:
   query_timeout_seconds: 900
   # Differences v1's own process explains, with the most of each that may appear.

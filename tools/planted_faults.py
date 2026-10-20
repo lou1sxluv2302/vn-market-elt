@@ -318,6 +318,38 @@ def fundamental_rows() -> Rows:
     return rows
 
 
+LEDGER_TABLES = {"index_membership_snapshot"}  # append-only by date, not snapshots
+
+
+def corporate_action_rows() -> Rows:
+    """Two runs of the corporate-action pull: the older one with the same events, so a
+    staging model that keeps both runs duplicates every event."""
+    rows: Rows = []
+    for run, at in (("run-old", OLDER_SNAPSHOT_AT), ("run-new", PULLED_AT)):
+        for k, (symbol, code, title, ratio) in enumerate(
+            (
+                ("S01", "DIV", "Cash Dividend - Year 2025 - 450 VND", 0.045),
+                ("S02", "ISS", "Share Issue - Bonus Issue ratio 10.0%", 0.10),
+                ("S21", "ISS", "Share Issue - Stock dividend ratio 18.0%", 0.18),
+            )
+        ):
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "event_id": f"ev{k}",
+                    "event_code": code,
+                    "event_title_en": title,
+                    "exright_date": SESSIONS[10 + k],
+                    "exercise_ratio": ratio,
+                    "value_per_share": 450.0 if code == "DIV" else None,
+                    "_server_total": 1,
+                    "_run_id": run,
+                    "_loaded_at": at,
+                }
+            )
+    return rows
+
+
 def snapshot_tables() -> dict[str, Rows]:
     """Flow and index snapshots: an older and a newer one, so staging must pick the newest."""
     days = SESSIONS[:5]
@@ -335,6 +367,13 @@ def snapshot_tables() -> dict[str, Rows]:
             for at in (OLDER_SNAPSHOT_AT, PULLED_AT)
         ]
     tables["fundamental_statement"] = fundamental_rows()
+    tables["corporate_actions"] = corporate_action_rows()
+    tables["index_membership_snapshot"] = [
+        {"as_of_date": d, "group_code": g, "symbol": sym, "_loaded_at": PULLED_AT}
+        for d in SESSIONS[-2:]
+        for g, members in (("VN30", ("S01", "S02", "S03")), ("HNX30", ("S21", "S22", "S23")))
+        for sym in members
+    ]
     tables["index_daily"] = [
         {
             "index_code": code,
@@ -521,9 +560,11 @@ FAULTS = [
     ),
     Fault(
         "empty_flow_and_index_snapshots",
-        "flow, index and financial-statement loads that wrote nothing",
+        "flow, index, financial-statement and Vietcap REST loads that wrote nothing",
         fail(
             "not_empty_fct_fundamental_quarterly_",
+            "not_empty_fct_corporate_action_",
+            "not_empty_fct_index_membership_daily_",
             "not_empty_stg_vnstock__foreign_trade_",
             "not_empty_stg_vnstock__prop_trade_",
             "not_empty_stg_vnstock__index_daily_",
@@ -1161,6 +1202,40 @@ FAULTS = [
         ),
     ),
     Fault(
+        "corporate_action_older_run_kept",
+        "staging keeps every run of the corporate-action pull, so each event appears once per run",
+        fail("unique_fct_corporate_action_event_id"),
+        mutants=(
+            Mutant(
+                "models/staging/stg_vci__corporate_actions.sql",
+                "    where _run_id = (",
+                "    where _run_id is not null or _run_id = (",
+            ),
+        ),
+    ),
+    Fault(
+        "corporate_action_negative_ratio",
+        "a ratio stored with its sign flipped (a share issue read as a reduction)",
+        fail("corporate_action_ratio_not_negative"),
+        snapshots=lambda tables: {
+            **tables,
+            "corporate_actions": [
+                {**r, "exercise_ratio": -r["exercise_ratio"]} if r["event_id"] == "ev1" else r
+                for r in tables["corporate_actions"]
+            ],
+        },
+    ),
+    Fault(
+        "index_ledger_day_loaded_twice",
+        "the same day's lists appended twice (the already-loaded check skipped)",
+        fail("unique_combination_fct_index_membership_daily_as_of_date__group_code__symbol"),
+        snapshots=lambda tables: {
+            **tables,
+            "index_membership_snapshot": tables["index_membership_snapshot"]
+            + [r for r in tables["index_membership_snapshot"] if r["as_of_date"] == SESSIONS[-1]],
+        },
+    ),
+    Fault(
         "sector_counts_stale_rows",
         "the sector page counts stale sessions (volume 0, price copied) as active",
         fail("assert_sector_counts_match_breadth"),
@@ -1622,7 +1697,11 @@ def self_test() -> int:
         and snapshot_tables() == snapshot_tables(),
         "fixture: every snapshot table has an older and a newer snapshot": all(
             {r["_loaded_at"] for r in v} == {OLDER_SNAPSHOT_AT, PULLED_AT}
-            for v in snapshot_tables().values()
+            for k, v in snapshot_tables().items()
+            if k not in LEDGER_TABLES
+        ),
+        "fixture: a ledger table holds more than one date": all(
+            len({r["as_of_date"] for r in snapshot_tables()[k]}) > 1 for k in LEDGER_TABLES
         ),
         "fixture: every regular price is on its tick": all(
             r["close_vnd"] % base_and_tick(r["symbol"])[1] == 0
