@@ -52,6 +52,14 @@ models:
             columns: [exchange, trade_date]
       - not_empty
 
+  - name: dim_symbol
+    description: One row per symbol - current exchange and ICB industry / supersector (VI, EN); classification is today's.
+    columns:
+      - name: symbol
+        data_tests: [unique, not_null]
+      - name: supersector_vi
+        data_tests: [not_null]
+
   - name: dim_trading_period
     description: Weeks, months and years with their session count and whether they are complete.
     data_tests:
@@ -181,3 +189,28 @@ unit_tests:
         - {period_type: month, period_id: 202606, session_count: 2, is_period_complete: true}
         - {period_type: month, period_id: 202607, session_count: 1, is_period_complete: false}
         - {period_type: year, period_id: 2026, session_count: 3, is_period_complete: false}
+
+  - name: symbol_industry_one_row_and_unclassified
+    description: >
+      AAA is classified at both levels and keeps only its open exchange period (the closed
+      HNX one never makes a second row); BBB has no classification and reads Unclassified.
+    model: dim_symbol
+    given:
+      - input: ref('dim_security')
+        rows:
+          - {symbol: AAA, exchange: HOSE, is_in_scope: true, is_delisted: false, effective_to: null}
+          - {symbol: BBB, exchange: HNX, is_in_scope: true, is_delisted: false, effective_to: null}
+          - {symbol: AAA, exchange: HNX, is_in_scope: true, is_delisted: false, effective_to: 2020-01-01}
+      - input: ref('stg_vnstock__symbol_industries')
+        format: sql
+        rows: |
+          select 'AAA' as symbol, 1 as icb_level, '1000' as icb_code
+          union all select 'AAA', 2, '1300'
+      - input: ref('stg_vnstock__industries_icb')
+        rows:
+          - {icb_code: '1000', icb_level: 1, icb_name_vi: Nguyên vật liệu, icb_name_en: Basic Materials}
+          - {icb_code: '1300', icb_level: 2, icb_name_vi: Hóa chất, icb_name_en: Chemicals}
+    expect:
+      rows:
+        - {symbol: AAA, exchange: HOSE, industry_en: Basic Materials, supersector_vi: Hóa chất, supersector_en: Chemicals}
+        - {symbol: BBB, exchange: HNX, industry_en: Unclassified, supersector_vi: Chưa phân ngành, supersector_en: Unclassified}

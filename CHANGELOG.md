@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `dim_symbol` (current exchange and ICB industry / supersector in Vietnamese and English,
+  from the newest snapshot; today's classification, not point in time) with staging
+  `stg_vnstock__symbol_industries` and `stg_vnstock__industries_icb`;
+  `dim_trading_calendar.trading_month_label` ("2026-01") for the report's month filter.
 - BI marts for the end-of-day report: `int_prices__indicators` (return against the previous
   close; SMA 20 / 50 / 200 and 52-week high / low over non-stale sessions, NULL in warm-up),
   `fct_symbol_session_daily`, `fct_market_breadth_daily` (flows.md §4 counts; no ceiling /

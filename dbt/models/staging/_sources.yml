@@ -16,6 +16,10 @@ sources:
             data_tests: [not_null]
       - name: ref_symbols_by_exchange
         description: Snapshots of the symbol list with exchange and instrument type.
+      - name: ref_symbols_by_industries
+        description: Snapshots of the symbol -> ICB code list, one row per symbol and level.
+      - name: ref_industries_icb
+        description: Snapshots of the ICB tree with Vietnamese and English names.
       - name: foreign_trade_daily
         description: >
           Snapshots of v1's daily foreign flow file (v1 rewrites it whole every day), one per
