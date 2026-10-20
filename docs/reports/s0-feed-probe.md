@@ -40,8 +40,11 @@ Even the universe outgrows the free storage tiers (Cloud Storage 5 GB, BigQuery 
 within one to two months: storage classes, a raw-table retention once staging has parsed
 it, or a smaller subscription keep the cost near zero. Decided with Q6.
 
-## Not answered yet
+## The gate: the same probe on the cloud VM (2026-10-20)
 
-Whether the feed accepts a connection from a Google Cloud address - the gate itself
-(S0.3-S0.4, the same probe on the VM). The afternoon session and the closing auction were
-not part of this run.
+`collector-prod-01` (e2-micro, us-central1), 09:30-10:01 Vietnam time, 30 symbols as above:
+86,909 messages, mean 2,804 / min, peak 3,248, **0 silent minutes, 0 disconnects**; median
+latency 0.6-1.2 s by message type, p99 under 2 s, measured on an NTP-synced clock; 142 MB
+peak RAM, 0.6 % CPU. **The feed serves a Google Cloud address: the gate is passed**
+(ADR-0033). The afternoon session and the closing auction are still unobserved; S1.6's five
+sessions cover them.

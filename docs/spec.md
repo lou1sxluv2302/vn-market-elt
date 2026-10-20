@@ -47,7 +47,7 @@ they become the source of progress and this list is retired.
 - [x] S0.1 feed probe and report (#33); a one-minute connection check connected (2026-10-16)
 - [x] S0.2 local probe, 30 minutes of a live session (2026-10-19): 3,301 msgs/min, 0.17 MiB/min as parquet, 0 disconnects, ~1 s latency, 183 MB RAM; reference / ceiling / floor and foreign flow per symbol present - `docs/reports/s0-feed-probe.md`
 - [x] S0.3 a Linux licence slot is free (2 of 2, owner, 2026-10-19)
-- [ ] S0.3b the VM (`create_vm` on, Terraform) · S0.4 key and installer on the VM, then the same probe there: the cloud gate
+- [x] S0.3b-S0.4 the VM applied (#45), key in Secret Manager, vendor installer on the VM; the same probe there on 2026-10-20: **cloud gate passed** (ADR-0033)
 - [x] S1.1-S1.3 collector and verified uploader (#37, ADR-0030)
 - [ ] S1.4 outside alert (ADR-0032): metric and policy written, tried on the live metric, policy applied and checked 2026-10-17; planted network cut in a live session · S1.5-S1.6 deployment, 5 sessions - after the gate
 - [x] S2.1-S2.3 load exactly once from the verified file, `tools/reconcile_stream.py` (#39, ADR-0031); table and owner impersonation applied and checked 2026-10-17
