@@ -1,0 +1,68 @@
+version: 2
+
+# Fundamentals (research plan R6-F): quarterly statements with the session a quarter becomes
+# usable. Known limit: the source's figures are FINAL (restated / audited), so a quarter's
+# date is its deadline for the final report, never the earlier unaudited one.
+
+models:
+  - name: int_fundamentals__quarterly
+    description: >
+      Quarterly statements, wide: revenue, profit after tax, minority interest, parent profit,
+      derived operating cash flow, ROE as the source gives it, shares; and the date the quarter
+      may be used (seed fundamental_availability). Zero trap: an item that is 0 in every period
+      of a symbol is NULL. Its grain is a group by; the grain test sits on the mart.
+
+  - name: fct_fundamental_quarterly
+    description: >
+      int_fundamentals__quarterly plus the first trading session on or after the usable date
+      (available_session_seq / _date): a feature at session D reads a quarter only when
+      available_session_seq <= D.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [symbol, fiscal_year, fiscal_quarter]
+      - not_empty
+      - row_condition:
+          name: fundamental_available_after_period_end
+          arguments:
+            condition: available_from_date > period_end_date
+      - row_condition:
+          name: fundamental_session_not_before_available
+          arguments:
+            condition: available_session_date is null or available_session_date >= available_from_date
+
+unit_tests:
+  - name: fundamentals_wide_parent_profit_cash_flow_and_availability
+    description: >
+      Q1 2025 of A: parent profit = 30 - 5; operating cash flow = (60 - 50) - (-20) - 5 - 1 = 24
+      (change in cash since Q4 2024, minus investing, financing and FX); usable 35 days after
+      2025-03-31 = 2025-05-05. Q4 2024 of A has no previous quarter, so no cash flow. Q4 2025 of B: its minority item is 0 in every
+      period (zero trap) so it is NULL and parent profit is the whole 40; usable 95 days after
+      2025-12-31 = 2026-04-05. A yearly row of A is ignored.
+    model: int_fundamentals__quarterly
+    given:
+      - input: ref('fundamental_availability')
+        rows:
+          - {fiscal_quarter: 1, deadline_days: 30, buffer_days: 5}
+          - {fiscal_quarter: 2, deadline_days: 60, buffer_days: 5}
+          - {fiscal_quarter: 3, deadline_days: 30, buffer_days: 5}
+          - {fiscal_quarter: 4, deadline_days: 90, buffer_days: 5}
+      - input: ref('stg_vnstock__fundamental_statement')
+        rows:
+          - {symbol: A, statement: income_statement, item_key: "Doanh thu thuần HĐKD BH (10=03+04)", period_type: quarter, fiscal_year: 2025, fiscal_quarter: 1, period_end_date: 2025-03-31, v1_available_from_date: 2025-05-05, value: 100, is_item_all_zero: false}
+          - {symbol: A, statement: income_statement, item_key: "Lợi nhuận sau thuế (XI-XII)", period_type: quarter, fiscal_year: 2025, fiscal_quarter: 1, period_end_date: 2025-03-31, v1_available_from_date: 2025-05-05, value: 30, is_item_all_zero: false}
+          - {symbol: A, statement: income_statement, item_key: "Lợi ích của cổ đông thiểu số", period_type: quarter, fiscal_year: 2025, fiscal_quarter: 1, period_end_date: 2025-03-31, v1_available_from_date: 2025-05-05, value: 5, is_item_all_zero: false}
+          - {symbol: A, statement: balance_sheet, item_key: "Tiền, vàng gửi tại các TCTD khác", period_type: quarter, fiscal_year: 2024, fiscal_quarter: 4, period_end_date: 2024-12-31, v1_available_from_date: 2025-04-05, value: 50, is_item_all_zero: false}
+          - {symbol: A, statement: balance_sheet, item_key: "Tiền, vàng gửi tại các TCTD khác", period_type: quarter, fiscal_year: 2025, fiscal_quarter: 1, period_end_date: 2025-03-31, v1_available_from_date: 2025-05-05, value: 60, is_item_all_zero: false}
+          - {symbol: A, statement: balance_sheet, item_key: "Tiền", period_type: quarter, fiscal_year: 2025, fiscal_quarter: 1, period_end_date: 2025-03-31, v1_available_from_date: 2025-05-05, value: 40, is_item_all_zero: false}
+          - {symbol: A, statement: cash_flow, item_key: "Ảnh hưởng của chênh lệch tỷ giá", period_type: quarter, fiscal_year: 2025, fiscal_quarter: 1, period_end_date: 2025-03-31, v1_available_from_date: 2025-05-05, value: 1, is_item_all_zero: false}
+          - {symbol: A, statement: cash_flow, item_key: "Lưu chuyển tiền thuần từ hoạt động đầu tư", period_type: quarter, fiscal_year: 2025, fiscal_quarter: 1, period_end_date: 2025-03-31, v1_available_from_date: 2025-05-05, value: -20, is_item_all_zero: false}
+          - {symbol: A, statement: cash_flow, item_key: "Lưu chuyển tiền thuần từ hoạt động tài chính", period_type: quarter, fiscal_year: 2025, fiscal_quarter: 1, period_end_date: 2025-03-31, v1_available_from_date: 2025-05-05, value: 5, is_item_all_zero: false}
+          - {symbol: A, statement: income_statement, item_key: "Lợi nhuận sau thuế (XI-XII)", period_type: year, fiscal_year: 2025, fiscal_quarter: null, period_end_date: 2025-12-31, v1_available_from_date: 2026-04-05, value: 999, is_item_all_zero: false}
+          - {symbol: B, statement: income_statement, item_key: "Lợi nhuận sau thuế (XI-XII)", period_type: quarter, fiscal_year: 2025, fiscal_quarter: 4, period_end_date: 2025-12-31, v1_available_from_date: 2026-04-05, value: 40, is_item_all_zero: false}
+          - {symbol: B, statement: income_statement, item_key: "Lợi ích của cổ đông thiểu số", period_type: quarter, fiscal_year: 2025, fiscal_quarter: 4, period_end_date: 2025-12-31, v1_available_from_date: 2026-04-05, value: 0, is_item_all_zero: true}
+    expect:
+      rows:
+        - {symbol: A, fiscal_year: 2024, fiscal_quarter: 4, available_from_date: 2025-04-05, revenue_vnd: null, minority_interest_vnd: null, parent_profit_vnd: null, operating_cash_flow_vnd: null}
+        - {symbol: A, fiscal_year: 2025, fiscal_quarter: 1, available_from_date: 2025-05-05, revenue_vnd: 100, minority_interest_vnd: 5, parent_profit_vnd: 25, operating_cash_flow_vnd: 24}
+        - {symbol: B, fiscal_year: 2025, fiscal_quarter: 4, available_from_date: 2026-04-05, revenue_vnd: null, minority_interest_vnd: null, parent_profit_vnd: 40, operating_cash_flow_vnd: null}

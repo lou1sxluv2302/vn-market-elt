@@ -38,6 +38,14 @@
             icb_name varchar, en_icb_name varchar, icb_code varchar, level bigint,
             _source_sha256 varchar, _loaded_at timestamptz
         );
+        create table if not exists raw_vnstock.fundamental_statement (
+            symbol varchar, statement varchar, item varchar, lan_xuat_hien bigint,
+            period_type varchar, period_label varchar, year bigint, quarter double, value double,
+            item_key varchar, is_meta boolean, dup_item_label boolean, dup_period_col boolean,
+            period_end_date date, available_from_date date, item_all_zero boolean,
+            item_all_null boolean, src varchar, loaded_at timestamptz,
+            _source_sha256 varchar, _loaded_at timestamptz
+        );
         create table if not exists raw_vnstock.index_daily (
             index_code varchar, session_date date,
             open double, high double, low double, close double, volume bigint, _source_id varchar,

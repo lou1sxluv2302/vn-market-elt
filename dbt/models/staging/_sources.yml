@@ -36,6 +36,21 @@ sources:
             data_tests: [not_null]
           - name: _loaded_at
             data_tests: [not_null]
+      - name: fundamental_statement
+        description: >
+          Snapshots of v1's financial-statement file (VCI, long form: symbol x statement x item x
+          fiscal period; 2018 onwards), one per content (`_source_sha256`); clustered by symbol.
+          No publication date in the source: v1's `available_from_date` is its deadline rule.
+        columns:
+          - name: _source_sha256
+            data_tests: [not_null]
+          - name: _loaded_at
+            data_tests: [not_null]
+      - name: capital_history
+        description: >
+          Snapshots of v1's charter-capital history (one row per symbol and change date).
+          Loaded for later use (raw-price and share-count work, research plan R6); no model reads
+          it yet.
       - name: index_daily
         description: >
           Snapshots of v1's index table (bronze_index), read read-only from its DuckDB. One

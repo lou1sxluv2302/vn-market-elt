@@ -1,6 +1,11 @@
 version: 2
 
 models:
+  - name: stg_vnstock__fundamental_statement
+    description: >
+      Newest snapshot of the financial statements, long form, meta rows dropped; v1's
+      availability date kept as v1_available_from_date for reconciliation.
+
   - name: stg_vnstock__ohlcv_daily
     description: Newest pull of each (source, symbol, trade_date) from the raw log.
     columns:

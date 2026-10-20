@@ -1,0 +1,5 @@
+fiscal_quarter,report_kind,deadline_days,buffer_days,as_of,source_ref
+1,quarterly (parent company),30,5,2026-10-21,Circular 96/2020/TT-BTC art. 14.3.c; v1 extract/vnstock_fundamental.py
+2,half-year reviewed (parent company),60,5,2026-10-21,Circular 96/2020/TT-BTC art. 14.2.c; v1 extract/vnstock_fundamental.py
+3,quarterly (parent company),30,5,2026-10-21,Circular 96/2020/TT-BTC art. 14.3.c; v1 extract/vnstock_fundamental.py
+4,annual audited,90,5,2026-10-21,Circular 96/2020/TT-BTC art. 10.1.c; v1 extract/vnstock_fundamental.py

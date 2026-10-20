@@ -13,6 +13,8 @@ What is loaded (config/el.yml, `v1_history`):
   is loaded again only when its content changed (`_source_sha256`);
 - the daily foreign and proprietary flow files, which v1 rewrites whole every day: the
   same snapshot rule, partitioned and clustered like OHLCV;
+- the financial statements and charter-capital history, one file each that v1's manual
+  extractor rewrites whole: the same snapshot rule, clustered by symbol;
 - the index history, which v1 keeps only in its DuckDB table: read read-only, loaded as
   a snapshot whose hash covers the table sorted by its key.
 
@@ -116,7 +118,7 @@ def check_schema(item: OhlcvFile) -> int:
 
 
 OHLCV_LINEAGE = ["_source_file", "_ingest_partition"]
-DATASETS = frozenset({"ohlcv", "reference", "flows", "index"})
+DATASETS = frozenset({"ohlcv", "reference", "flows", "fundamentals", "index"})
 
 
 def parse_datasets(text: str) -> frozenset[str]:
@@ -150,9 +152,10 @@ def reserved_names(
     if "reference" in datasets:
         for name, path in reference_files(bronze_dir, cfg).items():
             tables[name] = pq.read_schema(path).names + REFERENCE_LINEAGE
-    if "flows" in datasets:
-        for name, path in flow_files(bronze_dir, cfg).items():
-            tables[name] = pq.read_schema(path).names + REFERENCE_LINEAGE
+    for section in ("flows", "fundamentals"):
+        if section in datasets:
+            for name, path in snapshot_files(bronze_dir, cfg, section).items():
+                tables[name] = pq.read_schema(path).names + REFERENCE_LINEAGE
     if index_table is not None:
         tables[cfg["index"]["table"]] = index_table.schema.names + REFERENCE_LINEAGE
     return sorted(
@@ -175,17 +178,22 @@ def reference_files(bronze_dir: Path, cfg: dict) -> dict[str, Path]:
     return paths
 
 
-def flow_files(bronze_dir: Path, cfg: dict) -> dict[str, Path]:
-    """{destination table: v1 file} for the daily flow snapshots."""
-    flows = cfg["flows"]
+def snapshot_files(bronze_dir: Path, cfg: dict, section: str) -> dict[str, Path]:
+    """{destination table: v1 file} for a section of whole-file snapshots (flows, fundamentals)."""
+    part = cfg[section]
     paths = {
-        table: bronze_dir / f"source={flows['source_dir']}" / f"{name}{cfg['file_suffix']}"
-        for name, table in flows["files"].items()
+        table: bronze_dir / f"source={part['source_dir']}" / f"{name}{cfg['file_suffix']}"
+        for name, table in part["files"].items()
     }
     missing = [str(p) for p in paths.values() if not p.exists()]
     if missing:
-        raise InputError(f"flow files missing: {missing}")
+        raise InputError(f"{section} files missing: {missing}")
     return paths
+
+
+def flow_files(bronze_dir: Path, cfg: dict) -> dict[str, Path]:
+    """{destination table: v1 file} for the daily flow snapshots."""
+    return snapshot_files(bronze_dir, cfg, "flows")
 
 
 def read_index(duckdb_path: Path, cfg: dict) -> pa.Table:
@@ -281,19 +289,20 @@ def snapshots(
             for name, path in reference_files(bronze_dir, cfg).items()
         ]
     )
-    found += (
-        []
-        if "flows" not in datasets
-        else [
-            Snapshot(
-                table,
-                sha256_of(path),
-                pq.ParquetFile(path).metadata.num_rows,
-                lambda path=path: loadable(pq.read_table(path)),
-            )
-            for table, path in flow_files(bronze_dir, cfg).items()
-        ]
-    )
+    for section in ("flows", "fundamentals"):
+        found += (
+            []
+            if section not in datasets
+            else [
+                Snapshot(
+                    table,
+                    sha256_of(path),
+                    pq.ParquetFile(path).metadata.num_rows,
+                    lambda path=path: loadable(pq.read_table(path)),
+                )
+                for table, path in snapshot_files(bronze_dir, cfg, section).items()
+            ]
+        )
     if index_table is not None and "index" in datasets:
         found.append(
             Snapshot(
@@ -383,6 +392,8 @@ def build_source(
                 ),
                 cluster=cfg["flows"]["cluster_by"],
             )
+        for table in [t for t in cfg["fundamentals"]["files"].values() if t in by_table]:
+            bigquery_adapter(by_table[table], cluster=cfg["fundamentals"]["cluster_by"])
 
     @dlt.source(name=cfg["pipeline_name"])
     def v1_history() -> list:
@@ -481,8 +492,9 @@ def dry_run(
         print(f"  {source}: {rows:,} rows")
     for name, path in reference_files(bronze_dir, cfg).items():
         print(f"  reference {name}: {pq.ParquetFile(path).metadata.num_rows:,} rows")
-    for table, path in flow_files(bronze_dir, cfg).items():
-        print(f"  flows {table}: {pq.ParquetFile(path).metadata.num_rows:,} rows")
+    for section in ("flows", "fundamentals"):
+        for table, path in snapshot_files(bronze_dir, cfg, section).items():
+            print(f"  {section} {table}: {pq.ParquetFile(path).metadata.num_rows:,} rows")
     if index_table is not None:
         print(f"  index {cfg['index']['table']}: {index_table.num_rows:,} rows")
     print(f"Never read (not *.parquet) in the configured sources: {len(never_read)} files")
@@ -545,13 +557,19 @@ def self_test() -> int:
     table = f"raw.{cfg['ohlcv']['table']}"
     ref_table = f"raw.{cfg['reference']['table_prefix']}all_symbols"
     flow_table = f"raw.{cfg['flows']['files']['foreign_trade']}"
+    fund_table = f"raw.{cfg['fundamentals']['files']['fundamental_statement']}"
     index_dest = f"raw.{cfg['index']['table']}"
     checks: dict[str, bool] = {}
 
     def setup(tmp: Path) -> tuple[Path, dict, Any]:
         bronze = tmp / "bronze"
         paths = fx.bronze_tree(
-            bronze, primary, fallback, cfg["reference"]["files"], list(cfg["flows"]["files"])
+            bronze,
+            primary,
+            fallback,
+            cfg["reference"]["files"],
+            list(cfg["flows"]["files"]),
+            list(cfg["fundamentals"]["files"]),
         )
         pipeline = dlt.pipeline(
             pipeline_name="self_test",
@@ -593,11 +611,13 @@ def self_test() -> int:
         ref_first = query(tmp, f"select count(*) from {ref_table}")
         flow_first = query(tmp, f"select count(*) from {flow_table}")
         index_first = query(tmp, f"select count(*) from {index_dest}")
+        fund_first = query(tmp, f"select count(*) from {fund_table}")
         rerun_code = load(pipeline, bronze, cfg, cutoff, bigquery=False, index_table=index_v1)
         rerun = query(tmp, f"select count(*) from {table}")[0][0]
         ref_rerun = query(tmp, f"select count(*) from {ref_table}")
         flow_rerun = query(tmp, f"select count(*) from {flow_table}")
         index_rerun = query(tmp, f"select count(*) from {index_dest}")
+        fund_rerun = query(tmp, f"select count(*) from {fund_table}")
         fx.write(
             paths["reference_dir"] / "all_symbols.parquet",
             fx.pa.table({"symbol": ["AAA", "BBB", "DDD"]}),
@@ -630,6 +650,9 @@ def self_test() -> int:
                 "changed flow file and index are loaded as new snapshots": flow_changed == [(5,)]
                 and index_changed == [(3,)],
                 "dry run writes nothing": dry_code == 0 and dry_after == final,
+                "fundamentals load as a snapshot, once while unchanged": fund_first
+                == fund_rerun
+                == [(2,)],
             }
         )
 
@@ -713,6 +736,7 @@ def self_test() -> int:
             subset_code == 0
             and cfg["index"]["table"] in tables
             and not any(t in tables for t in cfg["flows"]["files"].values())
+            and not any(t in tables for t in cfg["fundamentals"]["files"].values())
         )
         checks["an unknown dataset name is refused"] = (
             subprocess.run(  # noqa: S603

@@ -273,6 +273,10 @@ _Avoid_: EOM date
 **Available-from date** (`available_from_date`) · _ngày công bố khả dụng_:
 The first date a disclosed figure may be used; joins use it, never the period end.
 
+**Available session** (`available_session_seq`, `available_session_date`) · _phiên khả dụng_:
+The first trading session on or after the available-from date; a feature at session D reads a
+quarter only when its available session is at or before D.
+
 **Period end date** (`period_end_date`) · _ngày kết thúc kỳ_:
 The last day of a reporting period.
 
