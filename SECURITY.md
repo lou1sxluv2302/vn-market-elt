@@ -25,7 +25,7 @@ repository. You will get an acknowledgement within 7 days.
 | Commit | pre-commit: gitleaks, data-file and size blocks |
 | Push | GitHub secret scanning with push protection |
 | Pull request | Required checks: gitleaks on the diff, data-file block, lint, self-tests |
-| Weekly | gitleaks over the full history · Dependabot · `pip-audit` |
+| Weekly | gitleaks over the full history · `pip-audit` · Dependabot security updates (as advisories appear; routine version bumps are off) |
 | Before every tag | Full review: history scan, no data files ever committed, no user-managed service-account keys |
 | Cloud | Least-privilege service accounts · SSH only through IAP · no public ingress · public access prevention on buckets · audit-log alerts on IAM and firewall changes · budget alerts |
 

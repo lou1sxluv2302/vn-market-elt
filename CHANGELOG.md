@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Dependabot: security updates only; routine version-update PRs are off (`open-pull-requests-limit: 0`).
+
 ### Added
 - `fct_price_rescale_check`: every vendor rescale of a HOSE / HNX symbol checked against the
   corporate actions in its window, with the expected ratio from the event and a status:

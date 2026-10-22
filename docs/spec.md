@@ -494,7 +494,7 @@ Code obtains secrets through **one module**, `vnmarket.common.secrets`.
 ### 14.7 Supply chain and CI
 
 - Dependencies locked with hashes.
-- Every GitHub Action is **pinned to a commit SHA**; Dependabot bumps them.
+- Every GitHub Action is **pinned to a commit SHA**; Dependabot raises a pin only for a security advisory (routine bumps off since 2026-10-22), otherwise by hand.
 - Every workflow declares minimal `permissions:` (default `contents: read`).
 - CI does **not** need vnstock's sponsor libraries (not on PyPI, key-gated): the
   collector isolates them behind an interface; CI uses synthetic feeds.

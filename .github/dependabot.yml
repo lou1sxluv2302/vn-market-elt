@@ -1,11 +1,19 @@
+# Security updates only (owner decision 2026-10-22). Routine version bumps are off:
+# `open-pull-requests-limit: 0` stops version-update PRs, while Dependabot security updates
+# (enabled in the repository settings) still open a PR as soon as an advisory affects a pinned
+# dependency; pip-audit in CI fails on known vulnerabilities as well. A version is raised by
+# hand when a security fix, a deprecation or a needed feature calls for it.
 version: 2
 updates:
   - package-ecosystem: pip
     directory: /
-    schedule: {interval: weekly}
+    schedule: {interval: monthly}
+    open-pull-requests-limit: 0
   - package-ecosystem: github-actions
     directory: /
-    schedule: {interval: weekly}
+    schedule: {interval: monthly}
+    open-pull-requests-limit: 0
   - package-ecosystem: terraform
     directories: [/infra/terraform/bootstrap, /infra/terraform/main]
-    schedule: {interval: weekly}
+    schedule: {interval: monthly}
+    open-pull-requests-limit: 0
