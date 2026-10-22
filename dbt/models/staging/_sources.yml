@@ -61,3 +61,23 @@ sources:
             data_tests: [not_null]
           - name: _loaded_at
             data_tests: [not_null]
+
+  - name: vci
+    description: >
+      Vietcap (VCI) public REST endpoints, loaded by vnmarket.el.load_vci_reference (no vendor
+      library: PyPI quarantined vnstock and vnai on 2026-09-24).
+    schema: raw_vnstock
+    tables:
+      - name: corporate_actions
+        description: >
+          Dividends (DIV) and share issues (ISS) from 2000, append-only by run (`_run_id`,
+          `_mode`): a full per-symbol pull, then weekly market-wide increments of recent events.
+          A run whose rows differ from the server's total, or a full run with fewer events for a
+          symbol than the previous full run, is refused before writing.
+        columns:
+          - name: _run_id
+            data_tests: [not_null]
+      - name: index_membership_snapshot
+        description: >
+          Append-only ledger of today's VN30 / HNX30 lists, one row per date, group and symbol,
+          from 2026-10-21 (no history exists). A missed day is lost for good.

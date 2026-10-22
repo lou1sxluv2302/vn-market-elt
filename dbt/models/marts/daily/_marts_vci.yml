@@ -1,0 +1,72 @@
+version: 2
+
+# Vietcap REST data (research plan R6-C, R6-I): corporate actions and the index ledger.
+
+models:
+  - name: fct_corporate_action
+    description: >
+      One row per dividend or share issue (newest snapshot), typed from the event code and
+      title. Adjusted prices already contain these events; the table is the independent
+      record of them.
+    columns:
+      - name: event_id
+        data_tests: [unique, not_null]
+    data_tests:
+      - not_empty
+      - row_condition:
+          name: corporate_action_ratio_not_negative
+          arguments:
+            condition: exercise_ratio is null or exercise_ratio >= 0
+
+  - name: fct_index_membership_daily
+    description: >
+      The VN30 / HNX30 ledger with an inclusion flag against the group's previous recorded
+      date. Starts 2026-10-21; there is no earlier history in any source in the stack.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [as_of_date, group_code, symbol]
+      - not_empty
+
+unit_tests:
+  - name: index_membership_flags_inclusions_against_the_previous_date
+    description: >
+      VN30 on two dates: A and B, then A and C. C is new on the second date, A is not; the
+      first date has no previous one, so nothing is flagged there.
+    model: fct_index_membership_daily
+    given:
+      - input: ref('stg_vci__index_membership')
+        rows:
+          - {as_of_date: 2026-10-21, group_code: VN30, symbol: A}
+          - {as_of_date: 2026-10-21, group_code: VN30, symbol: B}
+          - {as_of_date: 2026-10-22, group_code: VN30, symbol: A}
+          - {as_of_date: 2026-10-22, group_code: VN30, symbol: C}
+    expect:
+      rows:
+        - {as_of_date: 2026-10-21, group_code: VN30, symbol: A, is_new_member: null}
+        - {as_of_date: 2026-10-21, group_code: VN30, symbol: B, is_new_member: null}
+        - {as_of_date: 2026-10-22, group_code: VN30, symbol: A, is_new_member: false}
+        - {as_of_date: 2026-10-22, group_code: VN30, symbol: C, is_new_member: true}
+
+  - name: corporate_action_types_from_code_and_title
+    description: >
+      DIV is a cash dividend whatever the title; share issues are typed from the title, and a
+      title never seen before is other_issue.
+    model: fct_corporate_action
+    given:
+      - input: ref('stg_vci__corporate_actions')
+        rows:
+          - {event_id: "1", event_code: DIV, event_title_en: "Cash Dividend - Year 2025 - 450 VND"}
+          - {event_id: "2", event_code: ISS, event_title_en: "Share Issue - Bonus Issue ratio 10.0%"}
+          - {event_id: "3", event_code: ISS, event_title_en: "Share Issue - Stock dividend ratio 18.0%"}
+          - {event_id: "4", event_code: ISS, event_title_en: "Share Issue - Rights Issue ratio 20.0%"}
+          - {event_id: "5", event_code: ISS, event_title_en: "Share Issue - Private Placements ratio 6.5%"}
+          - {event_id: "6", event_code: ISS, event_title_en: "Share Issue - ESOP"}
+    expect:
+      rows:
+        - {event_id: "1", action_type: cash_dividend}
+        - {event_id: "2", action_type: bonus_issue}
+        - {event_id: "3", action_type: stock_dividend}
+        - {event_id: "4", action_type: rights_issue}
+        - {event_id: "5", action_type: private_placement}
+        - {event_id: "6", action_type: other_issue}
