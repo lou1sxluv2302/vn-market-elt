@@ -83,6 +83,12 @@ Status: K0.2 · condensed from v1's knowledge base (KB) on 2026-10-08 · rows la
 - The client sends an honest `User-Agent` and no browser headers. Both endpoints answer that way `measured on v2, 2026-10-22`. They are the website's internal API: no key, no published limits, and no terms were found.
 - Index membership: **today's list only**, VN30 and HNX30 (VNDIAMOND returned empty 2026-10-21). The ledger starts 2026-10-21. A missed session is lost, so the daily chain records it every session.
 
+**The vendor's price adjustment, checked** (`fct_price_rescale_check`) ✅ `measured on v2, 2026-10-22`, pulls 2026-08-06 to 2026-10-20:
+- Every cash dividend, stock dividend and bonus issue of a HOSE / HNX symbol that went ex inside the pull log has a vendor rewrite of the history around it: 169 of 175 with a matching ratio, and the other 6 involve rights or combined events.
+- Ex-date rescales (pulled within 7 days of the symbol's last changed session) match their events with a median gap of 0.0001 (p99 0.0081).
+- Long windows are illiquid symbols that last traded weeks before the ex-date, or rewrites of old history (7 end in 2009).
+- UPCoM symbols are outside the corporate-action pull.
+
 **Financial statements** (loaded as `raw_vnstock.fundamental_statement`, mart `fct_fundamental_quarterly`)
 - Source: v1's VCI extract, long form. Quarterly and yearly from 2018 Q1; 1,549 symbols; 18 income-statement, 43 balance-sheet, 14 cash-flow and 55 ratio items ✅ `measured on v2, 2026-10-21` (the file v1 wrote on 2026-08-22). v1's extractor is not in its daily chain, so the file is a snapshot that changes only when someone reruns it.
 - **No publication date.** A quarter is usable from its statutory deadline + 5 days (seed `fundamental_availability`, Circular 96/2020/TT-BTC):

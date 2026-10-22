@@ -735,10 +735,16 @@ FAULTS = [
     Fault(
         "revision_rows_fan_out",
         "the revision mart joined to its fit without the pull time: two rewrites of one "
-        "symbol (S17 halved twice, both clean rescales) multiply each other",
-        fail(
-            "unique_combination_fct_price_revision__source_id__symbol___ingested_at___source_file"
-        ),
+        "symbol (S17 halved twice, both clean rescales) multiply each other (echoes: the "
+        "rescale check inherits the duplicates, and neither rescale has a corporate action)",
+        {
+            **fail(
+                "unique_combination_fct_price_revision__source_id__symbol___ingested_at___source_file",
+                "unique_combination_fct_price_rescale_check__source_id__symbol___ingested_at___source_file",
+            ),
+            # echo: S17's two clean rescales have no corporate action behind them
+            **warn("monitor_rescale_explained_by_a_corporate_action"),
+        },
         data=compose(
             earlier_pull("S17", "2026-02-01 09:00:00+00", lambda r: r["close_vnd"] * 4),
             earlier_pull("S17", OLDER_PULL_AT, lambda r: r["close_vnd"] * 2),
@@ -1237,6 +1243,56 @@ FAULTS = [
             **tables,
             "index_membership_snapshot": tables["index_membership_snapshot"]
             + [r for r in tables["index_membership_snapshot"] if r["as_of_date"] == SESSIONS[-1]],
+        },
+    ),
+    Fault(
+        "rescale_without_corporate_action",
+        "the vendor rescaled a symbol's whole history (S18, doubled in the earlier pull) the "
+        "day after its last session, and no dividend or issue explains it",
+        warn("monitor_rescale_explained_by_a_corporate_action"),
+        data=earlier_pull("S18", OLDER_PULL_AT, lambda r: r["close_vnd"] and r["close_vnd"] * 2),
+    ),
+    Fault(
+        "rescale_ratio_off_its_event",
+        "S07's history halved while its only event is a 1 % cash dividend: the ratio does not "
+        "fit the event",
+        warn("monitor_rescale_explained_by_a_corporate_action"),
+        data=earlier_pull("S07", OLDER_PULL_AT, lambda r: r["close_vnd"] and r["close_vnd"] * 2),
+        snapshots=lambda tables: {
+            **tables,
+            "corporate_actions": tables["corporate_actions"]
+            + [
+                {
+                    **tables["corporate_actions"][0],
+                    "event_id": "evS07",
+                    "symbol": "S07",
+                    "exright_date": PULLED_AT[:10],
+                    "value_per_share": 200.0,
+                    "_run_id": "run-new",
+                    "_loaded_at": PULLED_AT,
+                    "_mode": "incremental",
+                }
+            ],
+        },
+    ),
+    Fault(
+        "corporate_action_not_adjusted",
+        "a cash dividend of S08 goes ex inside the pull log, but no pull rewrote its history",
+        warn("monitor_corporate_action_without_rescale"),
+        snapshots=lambda tables: {
+            **tables,
+            "corporate_actions": tables["corporate_actions"]
+            + [
+                {
+                    **tables["corporate_actions"][0],
+                    "event_id": "evS08",
+                    "symbol": "S08",
+                    "exright_date": SESSIONS[-3],
+                    "_run_id": "run-new",
+                    "_loaded_at": PULLED_AT,
+                    "_mode": "incremental",
+                }
+            ],
         },
     ),
     Fault(
