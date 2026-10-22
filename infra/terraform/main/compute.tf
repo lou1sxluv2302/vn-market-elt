@@ -101,6 +101,8 @@ resource "google_compute_instance" "collector" {
   metadata = {
     enable-oslogin         = "TRUE"
     block-project-ssh-keys = "TRUE"
+    # Runs at every boot; blocks the vendor library's telemetry host (startup/collector.sh).
+    startup-script = file("${path.module}/startup/collector.sh")
   }
 
   # unattended-upgrades and the collector user (spec §14.3-14.4) are configured

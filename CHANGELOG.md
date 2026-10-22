@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Collector VM startup script (Terraform metadata): keeps the vendor library's telemetry
+  host unreachable through `/etc/hosts` at every boot (PyPI quarantined vnstock / vnai).
+  Metadata only: no new resource, no cost.
 - `fct_price_rescale_check`: every vendor rescale of a HOSE / HNX symbol checked against the
   corporate actions in its window, with the expected ratio from the event and a status:
   - the expected ratio is (P - D) / P for a cash dividend and 1 / (1 + r) for a stock
