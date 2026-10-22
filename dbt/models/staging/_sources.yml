@@ -70,9 +70,10 @@ sources:
     tables:
       - name: corporate_actions
         description: >
-          Dividends (DIV) and share issues (ISS) per symbol from 2000, every page read; one
-          snapshot per run (`_run_id`). A run whose rows differ from the server's total, or that
-          has fewer events for a symbol than the newest snapshot, is refused before writing.
+          Dividends (DIV) and share issues (ISS) from 2000, append-only by run (`_run_id`,
+          `_mode`): a full per-symbol pull, then weekly market-wide increments of recent events.
+          A run whose rows differ from the server's total, or a full run with fewer events for a
+          symbol than the previous full run, is refused before writing.
         columns:
           - name: _run_id
             data_tests: [not_null]

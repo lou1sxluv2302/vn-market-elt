@@ -72,11 +72,11 @@ vci_rest:
   pipeline_name: vci_reference
   dataset: raw_vnstock
   bq_location: US
+  # An honest client name, no browser headers: these are the website's internal endpoints,
+  # not a published API (no key, no terms found). Both answered this way on 2026-10-22.
   headers:
-    User-Agent: "Mozilla/5.0"
+    User-Agent: "vn-market-elt (personal research, non-commercial, low rate)"
     Accept: application/json
-    Referer: "https://trading.vietcap.com.vn/"
-    Origin: "https://trading.vietcap.com.vn/"
   timeout_seconds: 30            # per HTTP call (engineering rule: every call has one)
   # Between calls. Measured 2026-10-21: 0.3-0.8 s per call; at 1.5 s the events endpoint
   # stopped answering after ~250 calls (read timeouts for 20 calls in a row and after), so
@@ -94,6 +94,11 @@ vci_rest:
     from_date: "20000101"
     page_size: 100
     max_pages: 20                # 2,000 events; measured maximum 95 (FPT, 2026-10-21)
+    # Weekly increments ask the whole market for recent events (no ticker): measured
+    # 2026-10-22, 335 events since 2026-09-01 in 4 pages - a few calls instead of ~930.
+    # A full per-symbol pull is run once, then rarely.
+    incremental_lookback_days: 90
+    incremental_max_pages: 50
     table: corporate_actions
     # The symbol list: v1's symbols_by_exchange snapshot, stocks of these exchanges, delisted
     # ones included (leaving them out would be survivorship bias).

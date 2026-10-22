@@ -50,7 +50,8 @@
             symbol varchar, event_id varchar, event_code varchar, category varchar,
             event_name_en varchar, event_title_en varchar, public_date date, record_date date,
             exright_date date, issue_date date, payout_date date, exercise_ratio double,
-            value_per_share double, payload_json varchar, _server_total bigint, _run_id varchar,
+            value_per_share double, payload_json varchar, _server_total bigint, _mode varchar,
+            _run_id varchar,
             _loaded_at timestamptz
         );
         create table if not exists raw_vnstock.index_membership_snapshot (

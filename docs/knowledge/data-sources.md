@@ -79,7 +79,8 @@ Status: K0.2 · condensed from v1's knowledge base (KB) on 2026-10-08 · rows la
   - `trading.vietcap.com.vn/api/price/symbols/getByGroup?group=VN30`.
 
   Every call has a timeout and is paced at 3 s. At 1.5 s the events endpoint stopped answering after ~250 calls (read timeouts that lasted past the run) `measured on v2, 2026-10-21`, so a failed call is retried after 60 / 180 / 600 s, and 5 calls that fail every retry stop the run.
-- Corporate actions: one snapshot per run, refused when a symbol's rows differ from `totalElements` or fall below the newest snapshot (rule 9).
+- Corporate actions: a full per-symbol pull once, then weekly increments. With no `ticker`, the endpoint returns the whole market's events in a date window: 335 events since 2026-09-01 in 4 pages `measured on v2, 2026-10-22`. A run is refused when its rows differ from `totalElements`; a full run is also refused when a symbol falls below the previous full run (rule 9).
+- The client sends an honest `User-Agent` and no browser headers. Both endpoints answer that way `measured on v2, 2026-10-22`. They are the website's internal API: no key, no published limits, and no terms were found.
 - Index membership: **today's list only**, VN30 and HNX30 (VNDIAMOND returned empty 2026-10-21). The ledger starts 2026-10-21. A missed session is lost, so the daily chain records it every session.
 
 **Financial statements** (loaded as `raw_vnstock.fundamental_statement`, mart `fct_fundamental_quarterly`)

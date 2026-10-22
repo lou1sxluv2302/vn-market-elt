@@ -1,15 +1,13 @@
--- Newest snapshot of the corporate-action pull: one row per event. `exercise_ratio` is the
--- source's ratio (0.10 = 10 % of par for a cash dividend, 10 new shares per 100 for a share
--- issue); `value_per_share_vnd` is the cash amount per share. Dates are the source's.
-with newest as (
-    select *
+-- The newest version of each corporate action across every run, full or incremental: one row
+-- per event. `exercise_ratio` is the source's ratio (0.10 = 10 % of par for a cash dividend,
+-- 10 new shares per 100 for a share issue); `value_per_share_vnd` is the cash amount per share.
+-- An event absent from later runs is kept: history does not shrink, and the loader refuses a
+-- full run with fewer events per symbol than the previous full run.
+with ranked as (
+    select
+        *,
+        row_number() over (partition by event_id order by _loaded_at desc) as version_rank
     from {{ source('vci', 'corporate_actions') }}
-    where _run_id = (
-        select _run_id
-        from {{ source('vci', 'corporate_actions') }}
-        order by _loaded_at desc
-        limit 1
-    )
 )
 
 select
@@ -26,6 +24,8 @@ select
     payout_date,
     exercise_ratio,
     value_per_share as value_per_share_vnd,
+    _mode,
     _run_id,
     _loaded_at
-from newest
+from ranked
+where version_rank = 1

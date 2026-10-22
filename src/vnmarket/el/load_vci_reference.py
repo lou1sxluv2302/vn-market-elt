@@ -1,11 +1,15 @@
 """Load Vietcap (VCI) reference data into BigQuery `raw_vnstock` by direct REST calls.
 
 Two datasets, each from one public endpoint (config/el.yml, `vci_rest`):
-- `corporate_actions`: dividends and share issues per symbol, every page, from 2000. One
-  run is one snapshot (`_run_id`); staging reads the newest. A symbol whose rows differ from
-  the server's own `totalElements` is a silent truncation and refuses the whole write
-  (rule 9). So does a symbol with fewer events than in the newest loaded snapshot, unless
-  `--allow-fewer` names the reason.
+- `corporate_actions`, two modes:
+  - `full`: every symbol's dividends and share issues from 2000, every page; run once, then
+    rarely. A symbol with fewer events than in the newest full run refuses the write, unless
+    `--allow-fewer` names the reason.
+  - `incremental` (weekly): the whole market's events of the last N days in a few calls,
+    kept for the same symbols.
+  Either way a response whose rows differ from the server's own `totalElements` is a silent
+  truncation and refuses the whole write (rule 9). Raw keeps every run (`_run_id`, `_mode`);
+  staging keeps the newest version of each event.
 - `index_members`: today's VN30 / HNX30 lists, appended to a ledger (one row per date,
   group and symbol). No history exists anywhere, so a missed day is lost; a list whose size
   is not the configured one is refused; a date already in the ledger is not loaded twice.
@@ -20,6 +24,7 @@ wrong list size) or load failed · 2 = usage, config or input error.
 Usage:
     python -m vnmarket.el.load_vci_reference --datasets index_members            # dry run
     python -m vnmarket.el.load_vci_reference --datasets corporate_actions --limit 5
+    python -m vnmarket.el.load_vci_reference --apply --datasets corporate_actions --mode full
     python -m vnmarket.el.load_vci_reference --apply --datasets corporate_actions,index_members
     python -m vnmarket.el.load_vci_reference --self-test
 """
@@ -67,6 +72,7 @@ EVENT_SCHEMA = pa.schema(
     + [
         ("payload_json", pa.string()),
         ("_server_total", pa.int64()),
+        ("_mode", pa.string()),
         ("_run_id", pa.string()),
         ("_loaded_at", pa.timestamp("us", tz="UTC")),
     ]
@@ -138,24 +144,26 @@ def retrying(
 # --- corporate actions -----------------------------------------------------------------------
 
 
-def fetch_events(get: Getter, symbol: str, cfg: dict, today: dt.date) -> tuple[list[dict], int]:
-    """Every DIV / ISS event of `symbol`, all pages; (rows, server total). Raises Refused when
-    the rows read differ from the server's totalElements (silent truncation)."""
+def fetch_events(
+    get: Getter, symbol: str | None, cfg: dict, today: dt.date, from_date: str | None = None
+) -> tuple[list[dict], int]:
+    """Every DIV / ISS event of `symbol` (or of the whole market when None), all pages;
+    (rows, server total). Raises Refused when the rows read differ from the server's
+    totalElements (silent truncation)."""
     ca = cfg["corporate_actions"]
     rows: list[dict] = []
     total = None
-    for page in range(ca["max_pages"]):
-        body = get(
-            ca["url"],
-            {
-                "ticker": symbol,
-                "fromDate": ca["from_date"],
-                "toDate": today.strftime("%Y%m%d"),
-                "eventCode": ca["event_codes"],
-                "page": page,
-                "size": ca["page_size"],
-            },
-        )
+    params = {
+        "fromDate": from_date or ca["from_date"],
+        "toDate": today.strftime("%Y%m%d"),
+        "eventCode": ca["event_codes"],
+        "size": ca["page_size"],
+    }
+    if symbol:
+        params["ticker"] = symbol
+    pages = ca["max_pages"] if symbol else ca["incremental_max_pages"]
+    for page in range(pages):
+        body = get(ca["url"], {**params, "page": page})
         data = (body or {}).get("data") or {}
         content = data.get("content") or []
         total = data.get("totalElements", total)
@@ -165,7 +173,7 @@ def fetch_events(get: Getter, symbol: str, cfg: dict, today: dt.date) -> tuple[l
     if total is None:
         total = len(rows)
     if len(rows) != total:
-        raise Refused(f"{symbol}: read {len(rows)} events, the server reports {total}")
+        raise Refused(f"{symbol or 'market'}: read {len(rows)} events, the server reports {total}")
     return rows, int(total)
 
 
@@ -180,16 +188,22 @@ def as_float(value: Any) -> float | None:
 
 
 def events_table(
-    symbol: str, rows: list[dict], total: int, run_id: str, at: dt.datetime
+    symbol: str | None,
+    rows: list[dict],
+    total: int,
+    run_id: str,
+    at: dt.datetime,
+    mode: str = "full",
 ) -> pa.Table:
     cast = {"str": lambda v: None if v is None else str(v), "date": as_date, "float": as_float}
     cols: dict[str, list] = {name: [] for name in EVENT_SCHEMA.names}
     for r in rows:
-        cols["symbol"].append(symbol)
+        cols["symbol"].append(symbol or r.get("ticker"))
         for name, (key, kind) in EVENT_FIELDS.items():
             cols[name].append(cast[kind](r.get(key)))
         cols["payload_json"].append(json.dumps(r, ensure_ascii=False, sort_keys=True))
         cols["_server_total"].append(total)
+        cols["_mode"].append(mode)
         cols["_run_id"].append(run_id)
         cols["_loaded_at"].append(at)
     return pa.table(cols, schema=EVENT_SCHEMA)
@@ -268,7 +282,8 @@ class Destination:
         t = self._table(table)
         rows = self._query(
             f"select symbol, count(*) from {t} where _run_id = "  # noqa: S608 - names from config
-            f"(select _run_id from {t} order by _loaded_at desc limit 1) group by symbol"
+            f"(select _run_id from {t} where _mode = 'full' order by _loaded_at desc limit 1) "
+            "group by symbol"
         )
         return {s: int(n) for s, n in rows}
 
@@ -297,6 +312,34 @@ class Destination:
 # --- runs -------------------------------------------------------------------------------------
 
 
+def run_incremental(
+    get: Getter, dest: Destination | None, symbols: list[str], cfg: dict, today: dt.date
+) -> int:
+    """The whole market's recent events in a few calls, kept for `symbols`."""
+    run_id, at = uuid.uuid4().hex, dt.datetime.now(dt.UTC)
+    since = today - dt.timedelta(days=cfg["corporate_actions"]["incremental_lookback_days"])
+    rows, total = fetch_events(get, None, cfg, today, since.strftime("%Y%m%d"))
+    wanted = set(symbols)
+    kept = [r for r in rows if r.get("ticker") in wanted]
+    print(f"corporate actions (incremental since {since}): {total} events, {len(kept)} kept")
+    if dest is None:
+        print("Dry run: nothing loaded.")
+        return 0
+    if not kept:
+        print("✅ nothing new to load")
+        return 0
+    table = cfg["corporate_actions"]["table"]
+    data = events_table(None, kept, total, run_id, at, "incremental")
+    dest.append(table, data)
+    got = dest.run_rows(table, "_run_id", run_id)
+    ok = got == data.num_rows
+    print(
+        f"{'✅' if ok else '🔴'} run {run_id[:8]}: {data.num_rows} rows sent, "
+        f"{got} in the destination"
+    )
+    return 0 if ok else 1
+
+
 def run_corporate_actions(
     get: Getter,
     dest: Destination | None,
@@ -305,6 +348,7 @@ def run_corporate_actions(
     today: dt.date,
     allow_fewer: str | None,
 ) -> int:
+    """The full per-symbol pull, one snapshot (`_mode` = full)."""
     run_id, at = uuid.uuid4().hex, dt.datetime.now(dt.UTC)
     tables, counts, failed = [], {}, []
     for k, symbol in enumerate(symbols, 1):
@@ -421,14 +465,17 @@ def fake_source(
         calls["n"] += 1
         if "group" in params:
             return [{"symbol": s} for s in (groups or {}).get(params["group"], [])]
-        rows = events.get(params["ticker"], [])
+        if "ticker" not in params:  # market-wide: every symbol's events, tagged with the ticker
+            rows = [{**e, "ticker": s} for s, es in sorted(events.items()) for e in es]
+        else:
+            rows = events.get(params["ticker"], [])
         page = params["page"]
         chunk = rows[page * page_size : (page + 1) * page_size]
         last = (page + 1) * page_size >= len(rows)
         return {
             "data": {
                 "content": chunk,
-                "totalElements": totals.get(params["ticker"], len(rows)),
+                "totalElements": totals.get(params.get("ticker", "*"), len(rows)),
                 "last": last,
             }
         }
@@ -501,6 +548,17 @@ def self_test() -> int:
             checks["planted: a shrinking history is refused before writing"] = (
                 dest.newest_counts(cfg["corporate_actions"]["table"]) == loaded
             )
+        inc = run_incremental(fake_source(events), dest, ["AAA", "CCC"], cfg, today)
+        checks["incremental: market-wide pages, kept for the symbol list, no shrink base"] = (
+            inc == 0
+            and dest.newest_counts(cfg["corporate_actions"]["table"]) == loaded
+            and dest.run_rows(cfg["corporate_actions"]["table"], "_mode", "incremental") == 4
+        )
+        try:
+            run_incremental(fake_source(events, totals={"*": 9}), None, ["AAA"], cfg, today)
+            checks["planted: a truncated market-wide answer is refused"] = False
+        except Refused:
+            checks["planted: a truncated market-wide answer is refused"] = True
         m1 = run_index_members(get, dest, cfg, today)
         m2 = run_index_members(get, dest, cfg, today)
         checks["index members: one ledger row per symbol, a date is never loaded twice"] = (
@@ -583,6 +641,12 @@ def main() -> int:
     parser.add_argument(
         "--datasets", type=parse_datasets, required=False, help=f"subset of {sorted(DATASETS)}"
     )
+    parser.add_argument(
+        "--mode",
+        choices=["full", "incremental"],
+        default="incremental",
+        help="corporate actions: full per-symbol pull, or recent market-wide events (default)",
+    )
     parser.add_argument("--limit", type=int, help="dry run only: the first N symbols")
     parser.add_argument(
         "--allow-fewer", metavar="REASON", help="load although a symbol has fewer events"
@@ -606,6 +670,9 @@ def main() -> int:
             code |= run_index_members(get, dest, cfg, today)
         if "corporate_actions" in args.datasets:
             symbols = symbol_list(Path(env["v1"]["bronze_dir"]), cfg)
+            if args.mode == "incremental":
+                code |= run_incremental(get, dest, symbols, cfg, today)
+                return code
             code |= run_corporate_actions(
                 get,
                 dest,

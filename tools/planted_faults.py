@@ -322,10 +322,13 @@ LEDGER_TABLES = {"index_membership_snapshot"}  # append-only by date, not snapsh
 
 
 def corporate_action_rows() -> Rows:
-    """Two runs of the corporate-action pull: the older one with the same events, so a
-    staging model that keeps both runs duplicates every event."""
+    """Two runs of the corporate-action pull (a full one, then an incremental one) with the
+    same events, so a staging model that keeps more than the newest version duplicates them."""
     rows: Rows = []
-    for run, at in (("run-old", OLDER_SNAPSHOT_AT), ("run-new", PULLED_AT)):
+    for run, at, mode in (
+        ("run-old", OLDER_SNAPSHOT_AT, "full"),
+        ("run-new", PULLED_AT, "incremental"),
+    ):
         for k, (symbol, code, title, ratio) in enumerate(
             (
                 ("S01", "DIV", "Cash Dividend - Year 2025 - 450 VND", 0.045),
@@ -343,6 +346,7 @@ def corporate_action_rows() -> Rows:
                     "exercise_ratio": ratio,
                     "value_per_share": 450.0 if code == "DIV" else None,
                     "_server_total": 1,
+                    "_mode": mode,
                     "_run_id": run,
                     "_loaded_at": at,
                 }
@@ -1203,13 +1207,13 @@ FAULTS = [
     ),
     Fault(
         "corporate_action_older_run_kept",
-        "staging keeps every run of the corporate-action pull, so each event appears once per run",
+        "staging keeps every version of an event, not the newest, so each appears once per run",
         fail("unique_fct_corporate_action_event_id"),
         mutants=(
             Mutant(
                 "models/staging/stg_vci__corporate_actions.sql",
-                "    where _run_id = (",
-                "    where _run_id is not null or _run_id = (",
+                "where version_rank = 1",
+                "where version_rank >= 1",
             ),
         ),
     ),
