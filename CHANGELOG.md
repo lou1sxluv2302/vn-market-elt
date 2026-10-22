@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Dependabot: security updates only; routine version-update PRs are off (`open-pull-requests-limit: 0`).
+
 ### Added
 - Collector VM startup script (Terraform metadata): keeps the vendor library's telemetry
   host unreachable through `/etc/hosts` at every boot (PyPI quarantined vnstock / vnai).
