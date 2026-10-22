@@ -97,6 +97,12 @@ vars:
   revision_rescale_max_deviation_vnd: 20
   revision_noise_max_move: 0.005
   revision_other_ceiling: 10   # warn above it: a new kind of rewrite to look at
+  # Rescales checked against corporate actions (fct_price_rescale_check). Measured 2026-10-22
+  # on 2.5 months of pulls: an ex-date rescale is pulled 1-4 days after its last changed
+  # session; the ratio gap of matched ones has median 0.0001, p99 0.0081.
+  rescale_event_window_days: 7
+  rescale_ratio_tolerance: 0.01
+  par_value_vnd: 10000        # a cash dividend given only as a ratio is a share of par
 
 models:
   vnmarket:

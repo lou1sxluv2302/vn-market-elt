@@ -7,6 +7,20 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `fct_price_rescale_check`: every vendor rescale of a HOSE / HNX symbol checked against the
+  corporate actions in its window, with the expected ratio from the event and a status:
+  - the expected ratio is (P - D) / P for a cash dividend and 1 / (1 + r) for a stock
+    dividend or bonus issue; several events multiply;
+  - the status is matched, ratio_differs, rights_involved or no_event, and only ex-date
+    shapes are judged.
+
+  Two warnings:
+  - `monitor_rescale_explained_by_a_corporate_action`;
+  - `monitor_corporate_action_without_rescale`.
+
+  Thresholds come from the measurement (window 7 days, tolerance 0.01; matched gaps median
+  0.0001, p99 0.0081). On 2.5 months of pulls both warnings show 0. One unit test; 3 new
+  planted faults and 1 extended.
 - `vnmarket.el.load_vci_reference`: Vietcap REST without the vendor library (PyPI
   quarantined vnstock / vnai). It loads two raw tables:
   - corporate actions (dividends and share issues from 2000): a full per-symbol pull,
