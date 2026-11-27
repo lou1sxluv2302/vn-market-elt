@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- Lint: ruff 0.17.6 for the pre-commit hook and the dev pin, so the weekly `hooks-current` check passes again (#68).
 - README: an honest status (cold path verified, hot path written but not deployed, daily load paused since 2026-11-14), CI and release badges, a "try it without a cloud account" section; hand-written counts removed or dated. Spec §0 refreshed (#70).
 - `planted_faults.py --fault NAME`: a chosen fault also names the tests that turned red, so the run reads as a demo (#70).
 - Dependabot: security updates only; routine version-update PRs are off (`open-pull-requests-limit: 0`).
