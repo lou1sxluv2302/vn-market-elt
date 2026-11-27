@@ -3,10 +3,50 @@
 **An ELT platform for Vietnamese equity market data - from the exchange feed to
 a BigQuery warehouse and a Power BI dashboard, on free-tier infrastructure.**
 
-> **Status:** the **cold path is built and verified** (P1-P3): 26 years of daily
-> history in BigQuery, rebuilt by dbt into point-in-time marts, reconciled row by row
-> against the previous system and guarded by data tests that are each proven able to fail.
-> The hot path (intraday feed) is next. See the [changelog](CHANGELOG.md).
+[![ci](https://github.com/lou1sxluv2302/vn-market-elt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lou1sxluv2302/vn-market-elt/actions/workflows/ci.yml)
+[![security](https://github.com/lou1sxluv2302/vn-market-elt/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/lou1sxluv2302/vn-market-elt/actions/workflows/security.yml)
+[![release](https://img.shields.io/github/v/tag/lou1sxluv2302/vn-market-elt?label=release)](CHANGELOG.md)
+
+> **Status (2026-11-27):**
+> - **Cold path: built and verified** (`v0.2.0`). 26 years of daily history in BigQuery,
+>   rebuilt by dbt into point-in-time marts, reconciled row by row against the previous
+>   system, and guarded by data tests that are each proven able to fail.
+> - **Hot path: written and tested, not deployed yet.** The collector, the verified
+>   uploader, the exactly-once loader and the stale-feed alert exist; the VM deployment
+>   (S1.5) does not.
+> - **Daily load paused since 2026-11-14.** The vendor library behind the upstream extract
+>   stopped authenticating on 2026-11-10, and the load waits for a data-source decision.
+>   Raw data is append-only and keyed by source, so a new source is one more raw table and
+>   staging model; nothing downstream is rewritten.
+>
+> See the [changelog](CHANGELOG.md), or [the five-minute tour](docs/demo.md).
+
+## Try it without a cloud account
+
+The whole dbt project builds on DuckDB from a generated synthetic warehouse (no market
+data in the repository). Plant a fault, and the data test written for it turns red:
+
+```bash
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e ".[dbt]"
+python tools/planted_faults.py --fault price_in_thousands --fault adv_reads_current_row --fault stale_rows_in_universe
+```
+
+```text
+✅ control: 164 data tests, 3282 fixture rows, red = none
+✅ price_in_thousands: one row in thousands of VND (19.45 read as 19)
+     red: price_close_multiple_of_10_vnd (fail)
+✅ adv_reads_current_row: ADV window shifted onto the current row
+     red: assert_adv_excludes_current_row (fail)
+✅ stale_rows_in_universe: both stale guards lost
+     red: assert_no_stale_row_in_universe (fail)
+   10 dbt steps, slowest 9.3s (limit 300s, config/dq.yml)
+```
+
+About 1.5 minutes on a laptop. Without `--fault` it runs all 67 faults and also checks
+that each data test is red in at least one of them; that is what CI runs on every pull
+request. `--list` shows every fault and the tests it must turn red.
+The full model graph with the number of tests on each model: [dbt lineage](docs/lineage.md).
 
 ## What is built and how it is verified
 
@@ -15,7 +55,7 @@ a BigQuery warehouse and a Power BI dashboard, on free-tier infrastructure.**
 | **History in BigQuery** | dlt loads every pull of the previous system's daily OHLCV (12 M+ rows, 2 sources, kept as an append-only log), the symbol lists, foreign and proprietary flows and index history (as content-hashed snapshots); every load is counted in the destination |
 | **Point-in-time marts** | trading calendar (observed sessions, then weekdays minus seeded holidays), securities with exchange history (SCD2), clean daily prices with tick and band of the day, liquidity and universe, flows with the match / put-through split only where it adds up, index levels |
 | **Reconciled, not just tested** | raw equals the source files per file (counts and date-weighted checksums); marts reproduce the previous system row by row, and every difference is named by its mechanism, not a tolerance |
-| **Tests that can fail** | 100+ dbt data tests and unit tests with exact known answers; a planted-fault matrix on a synthetic DuckDB warehouse turns each non-built-in test red with a fault of its own mechanism (37 faults), in CI |
+| **Tests that can fail** | 164 dbt data tests and unit tests with exact known answers; a planted-fault matrix on a synthetic DuckDB warehouse turns each non-built-in test red with a fault of its own mechanism (67 faults), in CI |
 | **No look-ahead** | features downstream are rebuilt with every input cut at a date and must not change |
 | **Keyless and cheap** | impersonation and Workload Identity Federation only; BigQuery and GCS free tiers |
 
@@ -140,6 +180,8 @@ Progress is tracked in [milestones](../../milestones).
 
 ## Documentation
 
+- [A five-minute tour](docs/demo.md) - the problem, the architecture, one hard part, a fault caught locally
+- [dbt lineage](docs/lineage.md) - every model and the data tests on it, generated from the manifest
 - [Specification](docs/spec.md) - goals, phases, latency budget, security design
 - [Architecture decisions](docs/adr/README.md)
 - [Engineering rules](docs/engineering-rules.md)

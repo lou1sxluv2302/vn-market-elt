@@ -1654,10 +1654,15 @@ def run_matrix(only: set[str], keep: Path | None) -> int:
             else:
                 dbt_step(project, "run", vars_=vars_)
             res = dbt_test(project, vars_)
-            problems = problems_for(fault, red_tests(res, names))
+            red = red_tests(res, names)
+            problems = problems_for(fault, red)
             print(f"{'✅' if not problems else '🔴'} {fault.name}: {fault.mechanism}")
             for p in problems:
                 print(f"     {p}")
+            if only and not problems:
+                # a chosen fault (the demo in docs/demo.md) names the tests that caught it
+                for name in sorted(red):
+                    print(f"     red: {name} ({red[name]})")
             if problems:
                 failures.append(fault.name)
             if keep is None:
