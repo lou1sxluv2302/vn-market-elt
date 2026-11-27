@@ -83,6 +83,9 @@ jobs:
           dbt run --empty --target ci
       - name: Unit tests (known answers for every rule)
         run: dbt test --target ci --select test_type:unit
+      - name: Lineage page matches the models (docs/lineage.md)
+        working-directory: .
+        run: python tools/lineage_mermaid.py --check
       - name: Planted faults (every data test proven able to go red)
         working-directory: .
         run: python tools/planted_faults.py

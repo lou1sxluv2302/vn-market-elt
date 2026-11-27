@@ -12,7 +12,7 @@ fails · all hours are **estimates**.
 
 ## 0. Progress
 
-Checked = done. Updated 2026-10-17. Once GitHub milestones exist (step 0.6),
+Checked = done. Updated 2026-11-27. Once GitHub milestones exist (step 0.6),
 they become the source of progress and this list is retired.
 
 **K0 - Knowledge harvest**
@@ -43,7 +43,7 @@ they become the source of progress and this list is retired.
 - [x] P2 dbt (#20) - project, keyless identity, market-rule seeds, staging, intermediate (#21); marts (calendar, securities SCD2, prices, liquidity, universe) and `tools/reconcile_v1_marts.py` green on all four checks, every difference named by its mechanism (#22)
 - [x] P3 data-quality tests (#23) - v1's checks for the layers v2 has as 66 dbt data tests; `tools/planted_faults.py` proves each can go red (32 faults, in CI); `dbt build --target prod` green 2026-10-15
 - [x] Research track (private repo) - features and PANIC labels, hypotheses registered then measured once, a walk-forward test; a forward journal runs every trading day from 2026-10-16. Inputs added here: flows and index history (#27, #28), `--datasets` for the daily reload (#30)
-- [ ] P4 (#34) - code merged (#35, ADR-0029): vendor rewrites classified (`fct_price_revision`), daily reconciliation logged; done at 10 consecutive passing sessions (1 of 10 on 2026-10-16)
+- [ ] P4 (#34) - code merged (#35, ADR-0029): vendor rewrites classified (`fct_price_revision`), daily reconciliation logged; done at 10 consecutive passing sessions (measured from the daily reconciliation log on 2026-11-27: longest run 5, to 2026-11-06). **Paused since 2026-11-14:** the vendor library behind v1's extract stopped authenticating on 2026-11-10, so no session after 2026-11-13 has been loaded; the streak restarts when a data source is decided
 - [x] S0.1 feed probe and report (#33); a one-minute connection check connected (2026-10-16)
 - [x] S0.2 local probe, 30 minutes of a live session (2026-10-19): 3,301 msgs/min, 0.17 MiB/min as parquet, 0 disconnects, ~1 s latency, 183 MB RAM; reference / ceiling / floor and foreign flow per symbol present - `docs/reports/s0-feed-probe.md`
 - [x] S0.3 a Linux licence slot is free (2 of 2, owner, 2026-10-19)
@@ -54,6 +54,7 @@ they become the source of progress and this list is retired.
 - [ ] S2.4 first live session reconciled per batch
 - [ ] S3 hot path: dbt views + Power BI
 - [ ] S4, P4, P5 → `v1.0.0`
+- [x] Portfolio readiness (#70): honest status and badges, a one-command offline demo (`planted_faults.py --fault`), the lineage page from the manifest (`docs/lineage.md`), a five-minute tour (`docs/demo.md`); dashboard pictures from a copy of the report that reads the synthetic warehouse as parquet (no market data)
 
 **Raised for the main repo, not acted on** (v1 is read-only from here; needs a separate decision)
 - [ ] `market_rules.yml` lacks 2026-11-24 (Vietnam Culture Day) and all 2027 holidays

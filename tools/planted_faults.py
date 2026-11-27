@@ -1437,6 +1437,11 @@ def red_tests(run_results: dict, names: dict[str, str]) -> dict[str, str]:
     }
 
 
+def red_lines(red: dict[str, str]) -> list[str]:
+    """One line per red test, sorted: what a chosen fault prints (README, docs/demo.md)."""
+    return [f"     red: {name} ({red[name]})" for name in sorted(red)]
+
+
 def problems_for(fault: Fault, red: dict[str, str]) -> list[str]:
     out = []
     for name in sorted(set(fault.expected) | set(red)):
@@ -1654,10 +1659,15 @@ def run_matrix(only: set[str], keep: Path | None) -> int:
             else:
                 dbt_step(project, "run", vars_=vars_)
             res = dbt_test(project, vars_)
-            problems = problems_for(fault, red_tests(res, names))
+            red = red_tests(res, names)
+            problems = problems_for(fault, red)
             print(f"{'✅' if not problems else '🔴'} {fault.name}: {fault.mechanism}")
             for p in problems:
                 print(f"     {p}")
+            if only and not problems:
+                # a chosen fault (the demo in docs/demo.md) names the tests that caught it
+                for line in red_lines(red):
+                    print(line)
             if problems:
                 failures.append(fault.name)
             if keep is None:
@@ -1730,6 +1740,10 @@ def self_test() -> int:
             problems_for(target_missed, red_tests(rr, names))
         )
         == 3,
+        "a chosen fault names each red test with its status, sorted": red_lines(
+            {"b_test": "warn", "a_test": "fail"}
+        )
+        == ["     red: a_test (fail)", "     red: b_test (warn)"],
         "planted: warn where fail was expected is a mismatch": problems_for(
             Fault("x", "m", {"a": "fail", "c": "fail"}), red_tests(rr, names)
         )
