@@ -52,13 +52,21 @@ The full model graph with the number of tests on each model: [dbt lineage](docs/
 
 ## The dashboard
 
-Power BI over the marts. These pictures come from a copy of the report that reads the
-**synthetic** warehouse above instead of BigQuery, so they hold no market data (vendor
-terms forbid redistributing it); the symbols, prices and dates are generated.
+Power BI over the marts, bilingual (Vietnamese / English) with a light and a dark theme.
+The pictures come from a copy of the report that reads a **synthetic** warehouse instead of
+BigQuery, so they hold no market data (vendor terms forbid redistributing it): 200
+generated symbols (S001-S200) over 2024-2025, built by `tools/demo_warehouse.py` through
+the same dbt project.
 
-![Market breadth page, dark theme, synthetic data](docs/images/dashboard-breadth-dark.jpg)
+![Market overview page, light theme, Vietnamese, synthetic data](docs/images/dashboard-overview.png)
 
-![Universe and liquidity page, light theme, synthetic data](docs/images/dashboard-universe-light.jpg)
+![Market breadth page, dark theme, Vietnamese, synthetic data](docs/images/dashboard-breadth-dark.webp)
+
+![Flows page, light theme, English, synthetic data](docs/images/dashboard-flows.webp)
+
+More pages: [breadth momentum](docs/images/dashboard-breadth-momentum-dark.webp) ·
+[flows by sector](docs/images/dashboard-flows-by-sector.webp) ·
+[sectors and the session calendar](docs/images/dashboard-sectors-calendar.png).
 
 ## What is built and how it is verified
 

@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format follows
 - Dependabot: security updates only; routine version-update PRs are off (`open-pull-requests-limit: 0`).
 
 ### Added
+- `tools/demo_warehouse.py`: a larger synthetic warehouse (200 symbols, 2024-2025, eight supersectors, flows, three indices) built through the dbt project on DuckDB, for the dashboard pictures; every generated row is checked against the tick, the band and the OHLC order before loading. The README's pictures are retaken from it.
 - `docs/demo.md`: a five-minute tour. `docs/lineage.md`: the dbt lineage as a Mermaid graph with the data tests per model, written by `tools/lineage_mermaid.py --apply` from the manifest (dry run by default); CI checks it is current (#70).
 - Dashboard pictures in the README (`docs/images/`), from a copy of the Power BI report that reads the synthetic warehouse instead of BigQuery: no market data (#70).
 - Collector VM startup script (Terraform metadata): keeps the vendor library's telemetry
