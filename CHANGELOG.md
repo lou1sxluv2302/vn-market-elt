@@ -7,9 +7,13 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- README: an honest status (cold path verified, hot path written but not deployed, daily load paused since 2026-11-14), CI and release badges, a "try it without a cloud account" section; hand-written counts removed or dated. Spec §0 refreshed (#70).
+- `planted_faults.py --fault NAME`: a chosen fault also names the tests that turned red, so the run reads as a demo (#70).
 - Dependabot: security updates only; routine version-update PRs are off (`open-pull-requests-limit: 0`).
 
 ### Added
+- `docs/demo.md`: a five-minute tour. `docs/lineage.md`: the dbt lineage as a Mermaid graph with the data tests per model, written by `tools/lineage_mermaid.py --apply` from the manifest (dry run by default); CI checks it is current (#70).
+- Dashboard pictures in the README (`docs/images/`), from a copy of the Power BI report that reads the synthetic warehouse instead of BigQuery: no market data (#70).
 - Collector VM startup script (Terraform metadata): keeps the vendor library's telemetry
   host unreachable through `/etc/hosts` at every boot (PyPI quarantined vnstock / vnai).
   Metadata only: no new resource, no cost.
