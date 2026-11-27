@@ -1565,7 +1565,10 @@ def load(db: Path, table: str, rows: Rows, *, replace: bool) -> None:
         con.close()
 
 
-def copy_project(target: Path) -> Path:
+def copy_project(target: Path, move_date: str | None = MOVE_DATE) -> Path:
+    """The dbt project without the owner's profile or build output. `move_date` moves the
+    seeded HNX -> HOSE date into the fixture's range; None keeps the seed as it is."""
+
     def skipped(directory: str, names: list[str]) -> set[str]:
         # The owner's profiles.yml (git-ignored) stays behind; ci/profiles.yml is used.
         top = Path(directory) == DBT_DIR
@@ -1576,10 +1579,12 @@ def copy_project(target: Path) -> Path:
         }
 
     shutil.copytree(DBT_DIR, target, ignore=skipped)
+    if move_date is None:
+        return target
     edit_seed(
         target,
         "exchange_changes",
-        set_column("effective_from", MOVE_DATE, lambda r: r["from_exchange"] == "HNX"),
+        set_column("effective_from", move_date, lambda r: r["from_exchange"] == "HNX"),
     )
     return target
 
