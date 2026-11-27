@@ -50,6 +50,16 @@ that each data test is red in at least one of them; that is what CI runs on ever
 request. `--list` shows every fault and the tests it must turn red.
 The full model graph with the number of tests on each model: [dbt lineage](docs/lineage.md).
 
+## The dashboard
+
+Power BI over the marts. These pictures come from a copy of the report that reads the
+**synthetic** warehouse above instead of BigQuery, so they hold no market data (vendor
+terms forbid redistributing it); the symbols, prices and dates are generated.
+
+![Market breadth page, dark theme, synthetic data](docs/images/dashboard-breadth-dark.jpg)
+
+![Universe and liquidity page, light theme, synthetic data](docs/images/dashboard-universe-light.jpg)
+
 ## What is built and how it is verified
 
 | | |

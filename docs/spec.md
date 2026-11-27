@@ -54,7 +54,7 @@ they become the source of progress and this list is retired.
 - [ ] S2.4 first live session reconciled per batch
 - [ ] S3 hot path: dbt views + Power BI
 - [ ] S4, P4, P5 → `v1.0.0`
-- [ ] Portfolio readiness (#70): honest status and badges, a one-command offline demo (`planted_faults.py --fault`), the lineage page from the manifest (`docs/lineage.md`), a five-minute tour (`docs/demo.md`); dashboard pictures from a synthetic dataset follow
+- [x] Portfolio readiness (#70): honest status and badges, a one-command offline demo (`planted_faults.py --fault`), the lineage page from the manifest (`docs/lineage.md`), a five-minute tour (`docs/demo.md`); dashboard pictures from a copy of the report that reads the synthetic warehouse as parquet (no market data)
 
 **Raised for the main repo, not acted on** (v1 is read-only from here; needs a separate decision)
 - [ ] `market_rules.yml` lacks 2026-11-24 (Vietnam Culture Day) and all 2027 holidays

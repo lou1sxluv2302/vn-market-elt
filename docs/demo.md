@@ -30,7 +30,8 @@ Two paths into one BigQuery warehouse, transformed by one dbt project:
 
 Pictures: the [architecture diagram](../README.md#architecture) and the
 [dbt lineage](lineage.md) (the number in each box is its data tests).
-Decisions behind them: [the ADRs](adr/README.md).
+Decisions behind them: [the ADRs](adr/README.md). The dashboard, on synthetic data:
+[breadth](images/dashboard-breadth-dark.jpg) · [universe](images/dashboard-universe-light.jpg).
 
 ## 3. One hard part: reconciling by mechanism, not by tolerance (1.5 min)
 
