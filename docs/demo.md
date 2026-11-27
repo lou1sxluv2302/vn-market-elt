@@ -10,14 +10,14 @@ Vietnamese market data is hard to keep correct over time:
 
 - vendors deliver **adjusted** prices and silently rewrite whole histories after corporate
   actions;
-- a third of all sessions are **stale** (volume 0, price copied), which turns indicators
-  into divisions by zero;
+- about a third of sessions are **stale** (volume 0, price copied; measured on the previous
+  system, 2026-08), which turns indicators into divisions by zero;
 - membership of the liquid universe, exchange moves and market rules change by date, so a
   model that reads today's values for an old date looks ahead without any error.
 
 The goal is a warehouse where every number is **point in time** and every check has been
 seen to fail. [Market microstructure](knowledge/market-microstructure.md) ·
-[45 data-quality lessons](knowledge/data-quality-lessons.md).
+[data-quality lessons](knowledge/data-quality-lessons.md).
 
 ## 2. The architecture (1 min)
 
@@ -29,8 +29,8 @@ Two paths into one BigQuery warehouse, transformed by one dbt project:
   uploaded with a checksum check and loaded exactly once. Written and tested; not deployed.
 
 Pictures: the [architecture diagram](../README.md#architecture) and the
-[dbt lineage](lineage.md) (38 models; the number in each box is its data tests).
-Decisions behind them: [33 ADRs](adr/README.md).
+[dbt lineage](lineage.md) (the number in each box is its data tests).
+Decisions behind them: [the ADRs](adr/README.md).
 
 ## 3. One hard part: reconciling by mechanism, not by tolerance (1.5 min)
 
@@ -56,7 +56,7 @@ python tools/planted_faults.py --fault adv_reads_current_row
 
 The fault shifts the 20-session liquidity window onto the current session - the classic
 look-ahead. The control build is green; with the fault, `assert_adv_excludes_current_row`
-turns red. `--list` shows all 67 faults. CI runs every one of them on each pull request and
+turns red. `--list` shows every fault. CI runs every one of them on each pull request and
 fails if any data test is never red (`tools/planted_faults.py`, docstring).
 
 ## 5. Security and cost (30 s)

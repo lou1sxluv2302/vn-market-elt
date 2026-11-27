@@ -32,6 +32,8 @@ pip install -e ".[dbt]"
 python tools/planted_faults.py --fault price_in_thousands --fault adv_reads_current_row --fault stale_rows_in_universe
 ```
 
+Output of a run on 2026-11-27 (your timings differ):
+
 ```text
 ✅ control: 164 data tests, 3282 fixture rows, red = none
 ✅ price_in_thousands: one row in thousands of VND (19.45 read as 19)
@@ -43,7 +45,7 @@ python tools/planted_faults.py --fault price_in_thousands --fault adv_reads_curr
    10 dbt steps, slowest 9.3s (limit 300s, config/dq.yml)
 ```
 
-About 1.5 minutes on a laptop. Without `--fault` it runs all 67 faults and also checks
+About 1.5 minutes on a laptop (measured 2026-11-27). Without `--fault` it runs every fault and also checks
 that each data test is red in at least one of them; that is what CI runs on every pull
 request. `--list` shows every fault and the tests it must turn red.
 The full model graph with the number of tests on each model: [dbt lineage](docs/lineage.md).
@@ -55,7 +57,7 @@ The full model graph with the number of tests on each model: [dbt lineage](docs/
 | **History in BigQuery** | dlt loads every pull of the previous system's daily OHLCV (12 M+ rows, 2 sources, kept as an append-only log), the symbol lists, foreign and proprietary flows and index history (as content-hashed snapshots); every load is counted in the destination |
 | **Point-in-time marts** | trading calendar (observed sessions, then weekdays minus seeded holidays), securities with exchange history (SCD2), clean daily prices with tick and band of the day, liquidity and universe, flows with the match / put-through split only where it adds up, index levels |
 | **Reconciled, not just tested** | raw equals the source files per file (counts and date-weighted checksums); marts reproduce the previous system row by row, and every difference is named by its mechanism, not a tolerance |
-| **Tests that can fail** | 164 dbt data tests and unit tests with exact known answers; a planted-fault matrix on a synthetic DuckDB warehouse turns each non-built-in test red with a fault of its own mechanism (67 faults), in CI |
+| **Tests that can fail** | dbt data tests and unit tests with exact known answers; a planted-fault matrix on a synthetic DuckDB warehouse turns each non-built-in test red with a fault of its own mechanism, in CI (`--list` shows every fault) |
 | **No look-ahead** | features downstream are rebuilt with every input cut at a date and must not change |
 | **Keyless and cheap** | impersonation and Workload Identity Federation only; BigQuery and GCS free tiers |
 
