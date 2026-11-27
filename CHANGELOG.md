@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- Lint: ruff 0.17.6 for the pre-commit hook and the dev pin, so the weekly `hooks-current` check passes again (#68).
 - Dependabot: security updates only; routine version-update PRs are off (`open-pull-requests-limit: 0`).
 
 ### Added
